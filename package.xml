@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>smooth_local_planner</name>
+  <version>0.0.1</version>
+  <description>The smooth_local_planner package</description>
+
+  <maintainer email="mlsdphonethk@gmail.com">Phone Thiha Kyaw</maintainer>
+
+  <!-- One license tag required, multiple allowed, one license per tag -->
+  <!-- Commonly used license strings: -->
+  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
+  <license>TODO</license>
+
+  <author email="mlsdphonethk@gmail.com">Phone Thiha Kyaw</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>roscpp</depend>
+  <depend>pluginlib</depend>
+  <depend>nav_core</depend>
+  <depend>nav_msgs</depend>
+  <depend>base_local_planner</depend>
+  <depend>costmap_2d</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <nav_core plugin="${prefix}/smooth_local_planner_plugin.xml" />
+  </export>
+
+</package>
