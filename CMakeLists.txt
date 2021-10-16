@@ -16,26 +16,54 @@ find_package(catkin REQUIRED COMPONENTS
   costmap_2d
   geometry_msgs
   std_msgs
+  cmake_modules
+  dynamic_reconfigure
+  sensor_msgs
+  tf2
+  tf2_geometry_msgs
+  tf2_ros
 )
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+find_package(CppAD REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(IPOPT REQUIRED)
 
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+  ${CPPAD_INCLUDE_DIRS}
+  ${IPOPT_INCLUDE_DIRS}
 )
 
+add_definitions(${EIGEN3_DEFINITIONS})
+
 catkin_package(
-  INCLUDE_DIRS include
+  INCLUDE_DIRS 
+    include
+    ${EIGEN3_INCLUDE_DIRS}
   LIBRARIES 
     smooth_local_planner
   CATKIN_DEPENDS
     roscpp
     pluginlib
-    base_local_planner
+    nav_core
     nav_msgs
+    base_local_planner
+    costmap_2d
+    geometry_msgs
+    std_msgs
+    dynamic_reconfigure
+    sensor_msgs
+    tf2
+    tf2_geometry_msgs
+    tf2_ros
 )
 
 add_library(smooth_local_planner
   src/smooth_local_planner_ros.cpp
+  src/path_optimizer.cpp
 )
 
 add_dependencies(smooth_local_planner 
@@ -46,8 +74,9 @@ add_dependencies(smooth_local_planner
 target_link_libraries(
 	smooth_local_planner
 	${catkin_LIBRARIES}
+  ${CPPAD_LIBRARY_DIRS}
+  ${IPOPT_LIBRARIES}
 )
-
 
 #############
 ## Install ##
