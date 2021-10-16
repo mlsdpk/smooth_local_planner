@@ -4,6 +4,24 @@ namespace smooth_local_planner {
 
 AD<double> FG_eval::objectiveFunc(const AD<double>& p1, const AD<double>& p2,
                                   const AD<double>& sf) const {
+  /*
+    Objective Function
+      - Bending energy objectve
+      - Soften the inequality constraints (curvature constraints) by penalizing
+        deviation in objective function
+
+    minimize
+      fbe(a,b,c,d,sf) +
+      alpha(xs(p4)-xf) + beta(ys(p4)-yf) + gamma(thetas(p4)-thetaf)
+
+    subject to
+      |p1| <= Kmax
+      |p2| <= Kmax
+
+    See:
+    https://www.coursera.org/learn/motion-planning-self-driving-cars/lecture/9MonW/lesson-2-path-planning-optimization
+  */
+
   OptimizationParameters p;
   p.p0 = 0.0;
   p.p1 = p1;
