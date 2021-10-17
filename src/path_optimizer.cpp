@@ -168,11 +168,11 @@ void PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
   CppAD::ipopt::solve<Dvector, FG_eval>(options_, xi_, xl_, xu_, gl_, gu_,
                                         fg_eval_, solution);
 
-  for (std::size_t i = 0; i < 3; ++i) {
-    std::cout << solution.x[i] << std::endl;
-  }
+  // for (std::size_t i = 0; i < 3; ++i) {
+  //   std::cout << solution.x[i] << std::endl;
+  // }
 
-  std::cout << solution.obj_value << std::endl;
+  // std::cout << solution.obj_value << std::endl;
 
   OptimizationParameters<double> p;
   p.p0 = 0.0;
