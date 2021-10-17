@@ -24,6 +24,15 @@ class FG_eval {
     fg[0] = objectiveFunc(p1, p2, sf);
   }
 
+  AD<double> objectiveFunc(const AD<double>& p1, const AD<double>& p2,
+                           const AD<double>& sf) const;
+  AD<double> fbe(const OptimizationParameters<AD<double>>& p) const;
+  AD<double> xs(const OptimizationParameters<AD<double>>& p) const;
+  AD<double> ys(const OptimizationParameters<AD<double>>& p) const;
+  AD<double> thetas(const OptimizationParameters<AD<double>>& p,
+                    const AD<double>& s) const;
+  template <typename T>
+  T thetas(const SpiralParameters<T>& spiral_params, const T& s) const;
   void setFinalPose(const double& xf, const double& yf, const double& thetaf) {
     xf_ = xf;
     yf_ = yf;
@@ -31,13 +40,6 @@ class FG_eval {
   };
 
  private:
-  AD<double> objectiveFunc(const AD<double>& p1, const AD<double>& p2,
-                           const AD<double>& sf) const;
-  AD<double> fbe(const OptimizationParameters& p) const;
-  AD<double> fxf(const OptimizationParameters& op) const;
-  AD<double> fyf(const OptimizationParameters& op) const;
-  AD<double> ftf(const OptimizationParameters& op) const;
-
   double xf_;
   double yf_;
   double thetaf_;
@@ -72,7 +74,8 @@ class PathOptimizer {
    * @param spiral Sampled spiral path
    * @param p optimization parameters
    */
-  void sampleSpiral(SpiralPath& spiral, const OptimizationParameters& p);
+  void sampleSpiral(SpiralPath& spiral,
+                    const OptimizationParameters<double>& p);
 
  private:
   typedef CppAD::vector<double> Dvector;

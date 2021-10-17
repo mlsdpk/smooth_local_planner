@@ -16,7 +16,19 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
 
   // this is just for testing optimizer
   SpiralPath spiral;
+
+  // auto init_time = std::chrono::system_clock::now();
   optimizer_->optimizeSpiral(spiral, 6.0, -1.5, 0.0);
+  // auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(
+  //                      std::chrono::system_clock::now() - init_time)
+  //                      .count();
+  // std::cout << "time diff: " << time_diff << std::endl;
+
+  // std::cout << "y_points size: " << spiral.y_points.size() << std::endl;
+  // for (const auto& point : spiral.y_points) {
+  //   std::cout << point << ", ";
+  // }
+  // std::cout << std::endl;
 }
 
 bool SmoothLocalPlannerROS::computeVelocityCommands(

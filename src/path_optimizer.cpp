@@ -5,16 +5,25 @@ namespace smooth_local_planner {
 AD<double> FG_eval::objectiveFunc(const AD<double>& p1, const AD<double>& p2,
                                   const AD<double>& sf) const {
   /*
+    We define the path as cubic polynomial spiral i.e., the curvature of the
+    path is a cubic polynomial function of arc length:
+
+        K(s) = a + bs + cs^2 + ds^3
+
+    Path parameterization: p = [p0 p1 p2 p3 p4/sf]
+
     Objective Function
       - Bending energy objectve
-      - Soften the inequality constraints (curvature constraints) by penalizing
-        deviation in objective function
+      - Soften the equality constraints of final spiral positions by adding as
+        penalty functions into our objective
+      - penalty functions here use the quadratic loss function
 
     minimize
       fbe(a,b,c,d,sf) +
-      alpha(xs(p4)-xf) + beta(ys(p4)-yf) + gamma(thetas(p4)-thetaf)
+      alpha * (xs(p4)-xf)^2 + beta * (ys(p4)-yf)^2 +
+      gamma * (thetas(p4)-thetaf)^2
 
-    subject to
+    subject to curvature bounds
       |p1| <= Kmax
       |p2| <= Kmax
 
@@ -22,7 +31,7 @@ AD<double> FG_eval::objectiveFunc(const AD<double>& p1, const AD<double>& p2,
     https://www.coursera.org/learn/motion-planning-self-driving-cars/lecture/9MonW/lesson-2-path-planning-optimization
   */
 
-  OptimizationParameters p;
+  OptimizationParameters<AD<double>> p;
   p.p0 = 0.0;
   p.p1 = p1;
   p.p2 = p2;
@@ -30,11 +39,15 @@ AD<double> FG_eval::objectiveFunc(const AD<double>& p1, const AD<double>& p2,
   p.p4 = sf;
   // TODO(Phone): remove hardcoded coefficients and allows to set from outside
   // using setters (probably with ros params)
-  return fbe(p) + 25.0 * (fxf(p) + fyf(p)) + 30.0 * ftf(p);
+  const double alpha = 25.0;
+  const double beta = 25.0;
+  const double gamma = 30.0;
+  return fbe(p) + alpha * pow(xf_ - xs(p), 2) + beta * pow(yf_ - ys(p), 2) +
+         gamma * pow(thetaf_ - thetas(p, p.p4), 2);
 }
 
-AD<double> FG_eval::fbe(const OptimizationParameters& p) const {
-  SpiralParameters spiral_params;
+AD<double> FG_eval::fbe(const OptimizationParameters<AD<double>>& p) const {
+  SpiralParameters<AD<double>> spiral_params;
   getSpiralParameters(spiral_params, p);
 
   auto& a = spiral_params.a;
@@ -51,124 +64,51 @@ AD<double> FG_eval::fbe(const OptimizationParameters& p) const {
          (a * b * pow(x, 2)) + (pow(a, 2) * x);
 }
 
-AD<double> FG_eval::fxf(const OptimizationParameters& op) const {
-  // TODO(Phone): find the compact mathematical form for this
-  std::vector<AD<double>> p{0.0, op.p1, op.p2, 0.0, op.p4};
-  const auto t2 = p[0] * (1.1E1 / 2.0);
-  const auto t3 = p[1] * 9.0;
-  const auto t4 = p[2] * (9.0 / 2.0);
-  const auto t5 = p[0] * (9.0 / 2.0);
-  const auto t6 = p[1] * (2.7E1 / 2.0);
-  const auto t7 = p[2] * (2.7E1 / 2.0);
-  const auto t8 = p[3] * (9.0 / 2.0);
-  const auto t9 = t5 - t6 + t7 - t8;
-  const auto t10 = p[0] * 9.0;
-  const auto t11 = p[1] * (4.5E1 / 2.0);
-  const auto t12 = p[2] * 1.8E1;
-  const auto t13 = t8 - t10 + t11 - t12;
-  const auto t14 = p[3] - t2 + t3 - t4;
-  const auto t15 =
-      xf_ -
-      p[4] *
-          (cos(p[0] * p[4] - p[4] * t9 * (1.0 / 4.0) -
-               p[4] * t13 * (1.0 / 3.0) + p[4] * t14 * (1.0 / 2.0)) +
-           cos(p[0] * p[4] * (1.0 / 2.0) - p[4] * t9 * (1.0 / 6.4E1) -
-               p[4] * t13 * (1.0 / 2.4E1) + p[4] * t14 * (1.0 / 8.0)) *
-               2.0 +
-           cos(p[0] * p[4] * (3.0 / 4.0) - p[4] * t9 * 7.91015625E-2 -
-               p[4] * t13 * (9.0 / 6.4E1) + p[4] * t14 * (9.0 / 3.2E1)) *
-               2.0 +
-           cos(p[0] * p[4] * (1.0 / 4.0) - p[4] * t9 * 9.765625E-4 -
-               p[4] * t13 * (1.0 / 1.92E2) + p[4] * t14 * (1.0 / 3.2E1)) *
-               2.0 +
-           cos(p[0] * p[4] * (3.0 / 8.0) - p[4] * t9 * 4.94384765625E-3 -
-               p[4] * t13 * (9.0 / 5.12E2) + p[4] * t14 * (9.0 / 1.28E2)) *
-               4.0 +
-           cos(p[0] * p[4] * (1.0 / 8.0) - p[4] * t9 * 6.103515625E-5 -
-               p[4] * t13 * 6.510416666666667E-4 +
-               p[4] * t14 * (1.0 / 1.28E2)) *
-               4.0 +
-           cos(p[0] * p[4] * (5.0 / 8.0) - p[4] * t9 * 3.814697265625E-2 -
-               p[4] * t13 * 8.138020833333333E-2 +
-               p[4] * t14 * (2.5E1 / 1.28E2)) *
-               4.0 +
-           cos(p[0] * p[4] * (7.0 / 8.0) - p[4] * t9 * 1.4654541015625E-1 -
-               p[4] * t13 * 2.233072916666667E-1 +
-               p[4] * t14 * (4.9E1 / 1.28E2)) *
-               4.0 +
-           1.0) *
-          (1.0 / 2.4E1);
-  const auto t0 = t15 * t15;
-  return t0;
+AD<double> FG_eval::xs(const OptimizationParameters<AD<double>>& p) const {
+  // Simpson's rule with n=8
+  // TODO: this parameter "n" must be set from outside of the class (with ros
+  // param)
+  auto& s = p.p4;
+
+  return (s / 24.0) * (cos(thetas(p, 0)) + 4 * cos(thetas(p, s / 8.0)) +
+                       2 * cos(thetas(p, 2.0 * s / 8.0)) +
+                       4 * cos(thetas(p, 3.0 * s / 8.0)) +
+                       2 * cos(thetas(p, 4.0 * s / 8.0)) +
+                       4 * cos(thetas(p, 5.0 * s / 8.0)) +
+                       2 * cos(thetas(p, 6.0 * s / 8.0)) +
+                       4 * cos(thetas(p, 7.0 * s / 8.0)) + cos(thetas(p, s)));
 }
 
-AD<double> FG_eval::fyf(const OptimizationParameters& op) const {
-  // TODO(Phone): find the compact mathematical form for this
-  std::vector<AD<double>> p{0.0, op.p1, op.p2, 0.0, op.p4};
-  const auto t2 = p[0] * (1.1E1 / 2.0);
-  const auto t3 = p[1] * 9.0;
-  const auto t4 = p[2] * (9.0 / 2.0);
-  const auto t5 = p[0] * (9.0 / 2.0);
-  const auto t6 = p[1] * (2.7E1 / 2.0);
-  const auto t7 = p[2] * (2.7E1 / 2.0);
-  const auto t8 = p[3] * (9.0 / 2.0);
-  const auto t9 = t5 - t6 + t7 - t8;
-  const auto t10 = p[0] * 9.0;
-  const auto t11 = p[1] * (4.5E1 / 2.0);
-  const auto t12 = p[2] * 1.8E1;
-  const auto t13 = t8 - t10 + t11 - t12;
-  const auto t14 = p[3] - t2 + t3 - t4;
-  const auto t15 =
-      yf_ -
-      p[4] *
-          (sin(p[0] * p[4] - p[4] * t9 * (1.0 / 4.0) -
-               p[4] * t13 * (1.0 / 3.0) + p[4] * t14 * (1.0 / 2.0)) +
-           sin(p[0] * p[4] * (1.0 / 2.0) - p[4] * t9 * (1.0 / 6.4E1) -
-               p[4] * t13 * (1.0 / 2.4E1) + p[4] * t14 * (1.0 / 8.0)) *
-               2.0 +
-           sin(p[0] * p[4] * (3.0 / 4.0) - p[4] * t9 * 7.91015625E-2 -
-               p[4] * t13 * (9.0 / 6.4E1) + p[4] * t14 * (9.0 / 3.2E1)) *
-               2.0 +
-           sin(p[0] * p[4] * (1.0 / 4.0) - p[4] * t9 * 9.765625E-4 -
-               p[4] * t13 * (1.0 / 1.92E2) + p[4] * t14 * (1.0 / 3.2E1)) *
-               2.0 +
-           sin(p[0] * p[4] * (3.0 / 8.0) - p[4] * t9 * 4.94384765625E-3 -
-               p[4] * t13 * (9.0 / 5.12E2) + p[4] * t14 * (9.0 / 1.28E2)) *
-               4.0 +
-           sin(p[0] * p[4] * (1.0 / 8.0) - p[4] * t9 * 6.103515625E-5 -
-               p[4] * t13 * 6.510416666666667E-4 +
-               p[4] * t14 * (1.0 / 1.28E2)) *
-               4.0 +
-           sin(p[0] * p[4] * (5.0 / 8.0) - p[4] * t9 * 3.814697265625E-2 -
-               p[4] * t13 * 8.138020833333333E-2 +
-               p[4] * t14 * (2.5E1 / 1.28E2)) *
-               4.0 +
-           sin(p[0] * p[4] * (7.0 / 8.0) - p[4] * t9 * 1.4654541015625E-1 -
-               p[4] * t13 * 2.233072916666667E-1 +
-               p[4] * t14 * (4.9E1 / 1.28E2)) *
-               4.0) *
-          (1.0 / 2.4E1);
-  const auto t0 = t15 * t15;
-  return t0;
+AD<double> FG_eval::ys(const OptimizationParameters<AD<double>>& p) const {
+  // Simpson's rule with n=8
+  // TODO: this parameter "n" must be set from outside of the class (with ros
+  // param)
+  auto& s = p.p4;
+
+  return (s / 24.0) * (sin(thetas(p, 0)) + 4 * sin(thetas(p, s / 8.0)) +
+                       2 * sin(thetas(p, 2.0 * s / 8.0)) +
+                       4 * sin(thetas(p, 3.0 * s / 8.0)) +
+                       2 * sin(thetas(p, 4.0 * s / 8.0)) +
+                       4 * sin(thetas(p, 5.0 * s / 8.0)) +
+                       2 * sin(thetas(p, 6.0 * s / 8.0)) +
+                       4 * sin(thetas(p, 7.0 * s / 8.0)) + sin(thetas(p, s)));
 }
 
-AD<double> FG_eval::ftf(const OptimizationParameters& op) const {
-  // TODO(Phone): find the compact mathematical form for this
-  std::vector<AD<double>> p{0.0, op.p1, op.p2, 0.0, op.p4};
-  const auto t2 =
-      thetaf_ - p[0] * p[4] +
-      p[4] * (p[0] * (1.1E1 / 2.0) - p[1] * 9.0 + p[2] * (9.0 / 2.0) - p[3]) *
-          (1.0 / 2.0) +
-      p[4] *
-          (p[0] * (9.0 / 2.0) - p[1] * (2.7E1 / 2.0) + p[2] * (2.7E1 / 2.0) -
-           p[3] * (9.0 / 2.0)) *
-          (1.0 / 4.0) -
-      p[4] *
-          (p[0] * 9.0 - p[1] * (4.5E1 / 2.0) + p[2] * 1.8E1 -
-           p[3] * (9.0 / 2.0)) *
-          (1.0 / 3.0);
-  const auto t0 = t2 * t2;
-  return t0;
+AD<double> FG_eval::thetas(const OptimizationParameters<AD<double>>& p,
+                           const AD<double>& s) const {
+  SpiralParameters<AD<double>> spiral_params;
+  getSpiralParameters(spiral_params, p);
+  return thetas(spiral_params, s);
+}
+
+template <typename T>
+T FG_eval::thetas(const SpiralParameters<T>& spiral_params, const T& s) const {
+  // K(s) = a + bs + cs^2 + ds^3
+  // theta(s) = integral of K(s) (has closed-form solution)
+  // theta(s) = a*s + b/2*s^2 + c/3*s^3 + d/4*s^4
+  return (spiral_params.a * s) + (spiral_params.b * pow(s, 2) * 1.0 / 2.0) +
+         (spiral_params.c * pow(s, 3) * 1.0 / 3.0) +
+         (spiral_params.d * pow(s, 4) * 1.0 / 4.0);
 }
 
 PathOptimizer::PathOptimizer() : xi_(3), xl_(3), xu_(3), gl_(0), gu_(0) {
@@ -227,34 +167,69 @@ void PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
   fg_eval_.setFinalPose(xf, yf, thetaf);
   CppAD::ipopt::solve<Dvector, FG_eval>(options_, xi_, xl_, xu_, gl_, gu_,
                                         fg_eval_, solution);
+
+  for (std::size_t i = 0; i < 3; ++i) {
+    std::cout << solution.x[i] << std::endl;
+  }
+
+  std::cout << solution.obj_value << std::endl;
+
+  OptimizationParameters<double> p;
+  p.p0 = 0.0;
+  p.p1 = solution.x[0];
+  p.p2 = solution.x[1];
+  p.p3 = 0.0;
+  p.p4 = solution.x[2];
+
   /*
-    for (std::size_t i = 0; i < 3; ++i) {
-      std::cout << solution.x[i] << std::endl;
-    }
-
-    std::cout << solution.obj_value << std::endl;
-
-    OptimizationParameters p;
-    p.p0 = 0.0;
-    p.p1 = solution.x[0];
-    p.p2 = solution.x[1];
-    p.p3 = 0.0;
-    p.p4 = solution.x[2];
-    SpiralParameters params;
-    getSpiralParameters(params, p);
-    std::cout << params.a << std::endl;
-    std::cout << params.b << std::endl;
-    std::cout << params.c << std::endl;
-    std::cout << params.d << std::endl;
-    */
-
-  // we define the path as cubic polynomial spiral i.e., the curvature of the
-  // path is a cubic polynomial function of arc length
-  // K(s) = a + bs + cs^2 + ds^3
-  // path parameterization: p = [p0 p1 p2 p3 p4/sf]
+  SpiralParameters<double> params;
+  getSpiralParameters(params, p);
+  std::cout << params.a << std::endl;
+  std::cout << params.b << std::endl;
+  std::cout << params.c << std::endl;
+  std::cout << params.d << std::endl;
+  */
 
   // TODO(Phone): samples the spiral along its arc length to generate a
   // discrete set of x, y, and theta points for a path.
+  sampleSpiral(spiral, p);
+}
+
+void PathOptimizer::sampleSpiral(SpiralPath& spiral,
+                                 const OptimizationParameters<double>& p) {
+  // Set the s_points (list of s values along the spiral) to be from 0.0 to p4
+  // (final arc length)
+  std::vector<double> s_points;
+  // TODO(Phone): Here we're currently using default n size (50)
+  // Allows it to be set from ros parameter
+  linSpace(s_points, 0.0, p.p4);
+
+  // convert from optimization space to spiral space
+  SpiralParameters<double> spiral_params;
+  getSpiralParameters(spiral_params, p);
+
+  // reserve memory to reduce allocation time (since we know vector size)
+  std::size_t s_size = s_points.size();
+  spiral.x_points.reserve(s_size);
+  spiral.y_points.reserve(s_size);
+  spiral.theta_points.reserve(s_size);
+
+  std::vector<double> cos_thetas, sin_thetas;
+  cos_thetas.reserve(s_size);
+  sin_thetas.reserve(s_size);
+
+  // we start with theta first (use theta(s) equation)
+  for (std::size_t i = 0; i < s_size; ++i) {
+    spiral.theta_points.push_back(fg_eval_.thetas(spiral_params, s_points[i]));
+    cos_thetas.push_back(std::cos(spiral.theta_points[i]));
+    sin_thetas.push_back(std::sin(spiral.theta_points[i]));
+  }
+
+  // Use numerical integration to generate points along the spiral
+  // path for x_points and y_points, here we use cumulative trapezoidal rule
+  // see: https://en.wikipedia.org/wiki/Trapezoidal_rule;
+  compositeTrapezoid(spiral.x_points, cos_thetas, s_points);
+  compositeTrapezoid(spiral.y_points, sin_thetas, s_points);
 }
 
 };  // namespace smooth_local_planner
