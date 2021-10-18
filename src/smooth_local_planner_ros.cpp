@@ -14,7 +14,7 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
                                        costmap_2d::Costmap2DROS* costmap_ros) {
   if (!initialized_) {
     ros::NodeHandle private_nh("~/" + name);
-    global_path_pub_ = private_nh.advertise<nav_msgs::Path>("global_path", 1);
+    global_path_pub_ = private_nh.advertise<nav_msgs::Path>("global_plan", 1);
 
     tf_ = tf;
     costmap_ros_ = costmap_ros;

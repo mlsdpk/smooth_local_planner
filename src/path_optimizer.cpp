@@ -37,13 +37,9 @@ AD<double> FG_eval::objectiveFunc(const AD<double>& p1, const AD<double>& p2,
   p.p2 = p2;
   p.p3 = 0.0;
   p.p4 = sf;
-  // TODO(Phone): remove hardcoded coefficients and allows to set from outside
-  // using setters (probably with ros params)
-  const double alpha = 25.0;
-  const double beta = 25.0;
-  const double gamma = 30.0;
-  return fbe(p) + alpha * pow(xf_ - xs(p), 2) + beta * pow(yf_ - ys(p), 2) +
-         gamma * pow(thetaf_ - thetas(p, p.p4), 2);
+
+  return fbe(p) + alpha_ * pow(xf_ - xs(p), 2) + beta_ * pow(yf_ - ys(p), 2) +
+         gamma_ * pow(thetaf_ - thetas(p, p.p4), 2);
 }
 
 AD<double> FG_eval::fbe(const OptimizationParameters<AD<double>>& p) const {
@@ -111,7 +107,8 @@ T FG_eval::thetas(const SpiralParameters<T>& spiral_params, const T& s) const {
          (spiral_params.d * pow(s, 4) * 1.0 / 4.0);
 }
 
-PathOptimizer::PathOptimizer() : xi_(3), xl_(3), xu_(3), gl_(0), gu_(0) {
+PathOptimizer::PathOptimizer(double max_curvature)
+    : max_curvature_{max_curvature}, xi_(3), xl_(3), xu_(3), gl_(0), gu_(0) {
   // initial value of p1 and p2
   xi_[0] = 0.0;
   xi_[1] = 0.0;
@@ -119,10 +116,10 @@ PathOptimizer::PathOptimizer() : xi_(3), xl_(3), xu_(3), gl_(0), gu_(0) {
   // lower and upper limits for p1 and p2 (curvature bounds)
   // their curvature needs to lie within [-0.5, 0.5]
   // TODO(Phone): this must be set from ros parameter
-  xl_[0] = -5.0;
-  xu_[0] = 5.0;
-  xl_[1] = -5.0;
-  xu_[1] = 5.0;
+  xl_[0] = -max_curvature_;
+  xu_[0] = max_curvature_;
+  xl_[1] = -max_curvature_;
+  xu_[1] = max_curvature_;
 
   // options
   // turn off any printing
@@ -168,12 +165,6 @@ void PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
   CppAD::ipopt::solve<Dvector, FG_eval>(options_, xi_, xl_, xu_, gl_, gu_,
                                         fg_eval_, solution);
 
-  // for (std::size_t i = 0; i < 3; ++i) {
-  //   std::cout << solution.x[i] << std::endl;
-  // }
-
-  // std::cout << solution.obj_value << std::endl;
-
   OptimizationParameters<double> p;
   p.p0 = 0.0;
   p.p1 = solution.x[0];
@@ -181,16 +172,7 @@ void PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
   p.p3 = 0.0;
   p.p4 = solution.x[2];
 
-  /*
-  SpiralParameters<double> params;
-  getSpiralParameters(params, p);
-  std::cout << params.a << std::endl;
-  std::cout << params.b << std::endl;
-  std::cout << params.c << std::endl;
-  std::cout << params.d << std::endl;
-  */
-
-  // TODO(Phone): samples the spiral along its arc length to generate a
+  // samples the spiral along its arc length to generate a
   // discrete set of x, y, and theta points for a path.
   sampleSpiral(spiral, p);
 }

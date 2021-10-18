@@ -44,6 +44,11 @@ class ConformalLatticePlanner {
   int lattice_path_samples_;
   double lattice_path_offset_;
   bool lattice_paths_pub_;
+  double max_curvature_;
+  double penalty_alpha_;
+  double penalty_beta_;
+  double penalty_gamma_;
+  int simpson_intervals_;
 };
 
 };  // namespace smooth_local_planner

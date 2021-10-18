@@ -17,10 +17,21 @@ ConformalLatticePlanner::ConformalLatticePlanner(
   private_nh.param("lattice_path_offset", lattice_path_offset_, 0.1);
   private_nh.param("lattice_paths_pub", lattice_paths_pub_, false);
 
+  // optimizer related parameters
+  private_nh.param("max_curvature", max_curvature_, 0.5);
+  private_nh.param("penalty_alpha", penalty_alpha_, 25.0);
+  private_nh.param("penalty_beta", penalty_beta_, 25.0);
+  private_nh.param("penalty_gamma", penalty_gamma_, 30.0);
+
+  // TODO(Phone): check whether it is even or not
+  // warn the user if not even and use the default one
+  private_nh.param("simpson_intervals", simpson_intervals_, 8);
+
   // initialize path optimizer
-  // TODO(Phone): create optimizer related ros parameters and pass it from
-  // constructor
-  optimizer_ = std::make_shared<PathOptimizer>();
+  optimizer_ = std::make_shared<PathOptimizer>(max_curvature_);
+  optimizer_->setPenaltyConstants(penalty_alpha_, penalty_beta_,
+                                  penalty_gamma_);
+  optimizer_->setSimpsonN(static_cast<unsigned>(simpson_intervals_));
 }
 
 ConformalLatticePlanner::~ConformalLatticePlanner() {}

@@ -38,11 +38,22 @@ class FG_eval {
     yf_ = yf;
     thetaf_ = thetaf;
   };
+  void setPenaltyConstants(const double& alpha, const double& beta,
+                           const double& gamma) {
+    alpha_ = alpha;
+    beta_ = beta;
+    gamma_ = gamma;
+  };
+  void setSimpsonN(unsigned int n) { n_regions_ = n; };
 
  private:
   double xf_;
   double yf_;
   double thetaf_;
+  double alpha_;
+  double beta_;
+  double gamma_;
+  unsigned int n_regions_;
 };
 
 class PathOptimizer {
@@ -50,7 +61,7 @@ class PathOptimizer {
   /**
    * @brief Constructor
    */
-  PathOptimizer();
+  PathOptimizer(double max_curvature);
 
   /**
    * @brief Destructor
@@ -77,6 +88,16 @@ class PathOptimizer {
   void sampleSpiral(SpiralPath& spiral,
                     const OptimizationParameters<double>& p);
 
+  void setPenaltyConstants(const double& alpha, const double& beta,
+                           const double& gamma) {
+    fg_eval_.setPenaltyConstants(alpha, beta, gamma);
+  };
+
+  void setSimpsonN(unsigned int n) {
+    assert(n % 2 != 0);  // n must be even
+    fg_eval_.setSimpsonN(n);
+  };
+
  private:
   typedef CppAD::vector<double> Dvector;
 
@@ -88,6 +109,8 @@ class PathOptimizer {
   Dvector gl_;
   Dvector gu_;
   FG_eval fg_eval_;
+
+  double max_curvature_;
 };
 
 };  // namespace smooth_local_planner
