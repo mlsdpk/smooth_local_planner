@@ -202,7 +202,7 @@ void PathOptimizer::sampleSpiral(SpiralPath& spiral,
   std::vector<double> s_points;
   // TODO(Phone): Here we're currently using default n size (50)
   // Allows it to be set from ros parameter
-  linSpace(s_points, 0.0, p.p4);
+  planner_utils::linSpace(s_points, 0.0, p.p4);
 
   // convert from optimization space to spiral space
   SpiralParameters<double> spiral_params;
@@ -228,8 +228,8 @@ void PathOptimizer::sampleSpiral(SpiralPath& spiral,
   // Use numerical integration to generate points along the spiral
   // path for x_points and y_points, here we use cumulative trapezoidal rule
   // see: https://en.wikipedia.org/wiki/Trapezoidal_rule;
-  compositeTrapezoid(spiral.x_points, cos_thetas, s_points);
-  compositeTrapezoid(spiral.y_points, sin_thetas, s_points);
+  planner_utils::compositeTrapezoid(spiral.x_points, cos_thetas, s_points);
+  planner_utils::compositeTrapezoid(spiral.y_points, sin_thetas, s_points);
 }
 
 };  // namespace smooth_local_planner

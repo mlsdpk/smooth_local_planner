@@ -1,5 +1,7 @@
 #pragma once
 
+#include <geometry_msgs/PoseStamped.h>
+
 #include <cppad/cppad.hpp>
 #include <vector>
 
@@ -31,7 +33,7 @@ struct OptimizationParameters {
 };
 
 template <typename T>
-static void getSpiralParameters(
+inline void getSpiralParameters(
     SpiralParameters<T>& spiral_params,
     const OptimizationParameters<T>& optimization_params) {
   spiral_params.a = optimization_params.p0;
@@ -50,7 +52,9 @@ static void getSpiralParameters(
                     pow(optimization_params.p4, 3);
 };
 
-static void linSpace(std::vector<double>& vec, const double& start,
+namespace planner_utils {
+
+inline void linSpace(std::vector<double>& vec, const double& start,
                      const double& end, std::size_t n = 50) {
   assert(n <= 0);
   // TODO: assert vector must be empty
@@ -76,7 +80,7 @@ static void linSpace(std::vector<double>& vec, const double& start,
  * @param y f(x), a scalar-valued function we want to integrate
  * @param s interval vector to be used during trapezoidal rule
  */
-static void compositeTrapezoid(std::vector<double>& points,
+inline void compositeTrapezoid(std::vector<double>& points,
                                const std::vector<double>& y,
                                const std::vector<double>& s) {
   points.resize(s.size());
@@ -88,5 +92,52 @@ static void compositeTrapezoid(std::vector<double>& points,
         points[i - 1] + (y[i] + y[i - 1]) * (s[i] - s[i - 1]) * 1.0 / 2.0;
   }
 }
+
+/**
+ * @brief Get the L2 distance between 2 geometry_msgs::Poses
+ * @param pos1 First pose
+ * @param pos1 Second pose
+ * @return double L2 distance
+ */
+inline double euclidean_distance(const geometry_msgs::Pose& pos1,
+                                 const geometry_msgs::Pose& pos2) {
+  double dx = pos1.position.x - pos2.position.x;
+  double dy = pos1.position.y - pos2.position.y;
+  double dz = pos1.position.z - pos2.position.z;
+  return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
+ * @brief Get the L2 distance between 2 geometry_msgs::PoseStamped
+ * @param pos1 First pose
+ * @param pos1 Second pose
+ * @return double L2 distance
+ */
+inline double euclidean_distance(const geometry_msgs::PoseStamped& pos1,
+                                 const geometry_msgs::PoseStamped& pos2) {
+  return euclidean_distance(pos1.pose, pos2.pose);
+}
+
+/**
+ * Find element in iterator with the minimum calculated value
+ */
+template <typename Iter, typename Getter>
+inline Iter min_by(Iter begin, Iter end, Getter getCompareVal) {
+  if (begin == end) {
+    return end;
+  }
+  auto lowest = getCompareVal(*begin);
+  Iter lowest_it = begin;
+  for (Iter it = ++begin; it != end; ++it) {
+    auto comp = getCompareVal(*it);
+    if (comp < lowest) {
+      lowest = comp;
+      lowest_it = it;
+    }
+  }
+  return lowest_it;
+}
+
+};  // namespace planner_utils
 
 };  // namespace smooth_local_planner

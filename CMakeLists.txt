@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   costmap_2d
   geometry_msgs
   std_msgs
+  visualization_msgs
   cmake_modules
   dynamic_reconfigure
   sensor_msgs
@@ -53,6 +54,7 @@ catkin_package(
     base_local_planner
     costmap_2d
     geometry_msgs
+    visualization_msgs
     std_msgs
     dynamic_reconfigure
     sensor_msgs
@@ -64,6 +66,7 @@ catkin_package(
 add_library(smooth_local_planner
   src/smooth_local_planner_ros.cpp
   src/path_optimizer.cpp
+  src/conformal_lattice_planner.cpp
 )
 
 add_dependencies(smooth_local_planner 
