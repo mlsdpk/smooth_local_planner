@@ -1,8 +1,4 @@
-#include <pluginlib/class_list_macros.h>
 #include <smooth_local_planner/smooth_local_planner_ros.h>
-// register this planner as a BaseLocalPlanner plugin
-PLUGINLIB_EXPORT_CLASS(smooth_local_planner::SmoothLocalPlannerROS,
-                       nav_core::BaseLocalPlanner)
 
 namespace smooth_local_planner {
 
@@ -14,7 +10,10 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
                                        costmap_2d::Costmap2DROS* costmap_ros) {
   if (!initialized_) {
     ros::NodeHandle private_nh("~/" + name);
-    global_path_pub_ = private_nh.advertise<nav_msgs::Path>("global_plan", 1);
+
+    // ros parameters
+    // most of the parameters will be handled in its own classes
+    private_nh.param("lattice_paths_pub", lattice_paths_pub_, false);
 
     tf_ = tf;
     costmap_ros_ = costmap_ros;
@@ -22,11 +21,13 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
     // get the current robot pose in the map frame
     costmap_ros_->getRobotPose(current_pose_);
 
-    // make sure to update the costmap we'll use for this cycle
-    costmap_2d::Costmap2D* costmap = costmap_ros_->getCostmap();
-
     conformal_lattice_planner_ =
-        std::make_shared<ConformalLatticePlanner>(name, tf, costmap_ros);
+        std::make_shared<ConformalLatticePlanner>(name);
+
+    collision_checker_ = std::make_shared<GridCollisionChecker>(
+        costmap_ros_->getCostmap(), costmap_ros_->getRobotFootprint());
+
+    visualizer_ = std::make_shared<visualizer::Visualizer>(name);
 
     initialized_ = true;
   }
@@ -39,14 +40,62 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
     return false;
   }
 
-  // transform the global plan into robot frame and publish the transformed
-  // path, this also removes part of the path that is outside of the local
+  // transform the global plan into robot frame
+  // this also removes part of the path that is outside of the local
   // costmap and also prunes the path behind the robot
   nav_msgs::Path transformed_plan;
   transformGlobalPlan(transformed_plan, current_pose_);
 
+  // conformal lattice planning
+  // resultant lattice paths are now in robot frame
   std::vector<SpiralPath> lattice_paths;
   conformal_lattice_planner_->plan(lattice_paths, transformed_plan);
+
+  // once the lattice paths are generated, we perform collision checking for
+  // each path and remove the collision ones
+
+  // auto init_time1 = std::chrono::system_clock::now();
+
+  // first we need to convert paths into global frame
+  // TODO(Phone): need to make this conversion faster
+  std::vector<nav_msgs::Path> paths;
+  paths.resize(lattice_paths.size());
+  const std::string global_frame_id = costmap_ros_->getGlobalFrameID();
+
+  for (std::size_t i = 0; i < paths.size(); i++) {
+    nav_msgs::Path temp_path;
+    temp_path.header.frame_id = global_frame_id;
+    // TODO: make sure spiral x, y and theta points have same length
+    std::size_t s_size = lattice_paths[i].x_points.size();
+    temp_path.poses.resize(s_size);
+    for (std::size_t j = 0; j < s_size; ++j) {
+      geometry_msgs::PoseStamped temp_pose;
+      temp_pose.header.frame_id = lattice_paths[i].frame_id;
+      temp_pose.pose.position.x = lattice_paths[i].x_points[j];
+      temp_pose.pose.position.y = lattice_paths[i].y_points[j];
+      planner_utils::convertToQuaternion(lattice_paths[i].theta_points[j],
+                                         temp_pose.pose.orientation);
+      if (!transformPose(temp_pose, temp_path.poses[j], global_frame_id)) {
+        throw("Unable to transform robot pose into global plan's frame");
+      }
+    }
+    paths[i].header.frame_id = temp_path.header.frame_id;
+    paths[i].poses.swap(temp_path.poses);
+  }
+
+  // auto time_diff1 = std::chrono::duration_cast<std::chrono::microseconds>(
+  //                       std::chrono::system_clock::now() - init_time1)
+  //                       .count();
+  // std::cout << "path converting time diff: " << time_diff1 << std::endl;
+
+  std::vector<bool> collision_status;
+  collision_checker_->checkCollision(collision_status, paths);
+
+  // visualize everything
+  if (lattice_paths_pub_) {
+    visualizer_->publishMarkers(lattice_paths, collision_status);
+  }
+  visualizer_->publishGlobalPlan(transformed_plan);
 
   return true;
 }
@@ -107,7 +156,6 @@ void SmoothLocalPlannerROS::transformGlobalPlan(
   // Remove the portion of the global plan that we've already passed so we don't
   // process it on the next iteration (this is called path pruning)
   global_plan_.erase(std::begin(global_plan_), transformation_begin);
-  global_path_pub_.publish(transformed_plan);
 
   if (transformed_plan.poses.empty()) {
     throw("Resulting plan has 0 poses in it.");
@@ -159,3 +207,8 @@ bool SmoothLocalPlannerROS::setPlan(
 }
 
 };  // namespace smooth_local_planner
+
+#include <pluginlib/class_list_macros.h>
+// register this planner as a BaseLocalPlanner plugin
+PLUGINLIB_EXPORT_CLASS(smooth_local_planner::SmoothLocalPlannerROS,
+                       nav_core::BaseLocalPlanner)

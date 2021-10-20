@@ -1,6 +1,9 @@
 #pragma once
 
+#include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Path.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <cppad/cppad.hpp>
 #include <vector>
@@ -10,6 +13,7 @@ using CppAD::AD;
 namespace smooth_local_planner {
 
 struct SpiralPath {
+  std::string frame_id;
   std::vector<double> x_points;
   std::vector<double> y_points;
   std::vector<double> theta_points;
@@ -136,6 +140,13 @@ inline Iter min_by(Iter begin, Iter end, Getter getCompareVal) {
     }
   }
   return lowest_it;
+}
+
+inline void convertToQuaternion(const double& angle,
+                                geometry_msgs::Quaternion& quat) {
+  tf2::Quaternion q;
+  q.setRPY(0, 0, angle);
+  quat = tf2::toMsg(q);
 }
 
 };  // namespace planner_utils

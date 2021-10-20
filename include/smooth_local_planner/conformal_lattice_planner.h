@@ -18,8 +18,7 @@ class ConformalLatticePlanner {
   /**
    * @brief Constructor
    */
-  ConformalLatticePlanner(std::string name, tf2_ros::Buffer* tf,
-                          costmap_2d::Costmap2DROS* costmap_ros);
+  ConformalLatticePlanner(const std::string& name);
 
   /**
    * @brief Destructor
@@ -34,17 +33,12 @@ class ConformalLatticePlanner {
       std::vector<geometry_msgs::PoseStamped>& goal_poses,
       const geometry_msgs::PoseStamped& lookahead_goal_pose) const;
 
-  tf2_ros::Buffer* tf_;
-  costmap_2d::Costmap2DROS* costmap_ros_;
   std::shared_ptr<PathOptimizer> optimizer_;
-
-  ros::Publisher markers_pub_;
 
   double lookahead_goal_dist_;
   int lattice_path_samples_;
   double lattice_path_offset_;
-  bool lattice_paths_pub_;
-  double max_curvature_;
+  double min_turning_radius_;
   double penalty_alpha_;
   double penalty_beta_;
   double penalty_gamma_;

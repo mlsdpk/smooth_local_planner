@@ -67,6 +67,7 @@ add_library(smooth_local_planner
   src/smooth_local_planner_ros.cpp
   src/path_optimizer.cpp
   src/conformal_lattice_planner.cpp
+  src/visualizer.cpp
 )
 
 add_dependencies(smooth_local_planner 

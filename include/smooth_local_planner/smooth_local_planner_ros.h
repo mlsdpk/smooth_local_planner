@@ -1,13 +1,14 @@
 #pragma once
 
-#include <base_local_planner/local_planner_util.h>
 #include <costmap_2d/costmap_2d_ros.h>
 #include <dynamic_reconfigure/server.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_core/base_local_planner.h>
 #include <nav_msgs/Path.h>
+#include <smooth_local_planner/collision_checker.h>
 #include <smooth_local_planner/conformal_lattice_planner.h>
+#include <smooth_local_planner/visualizer.h>
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/buffer.h>
@@ -42,14 +43,18 @@ class SmoothLocalPlannerROS : public nav_core::BaseLocalPlanner {
                      geometry_msgs::PoseStamped& out_pose,
                      const std::string& frame) const;
 
-  ros::Publisher global_path_pub_;
+  // parameters
+  bool lattice_paths_pub_;
+
+  // main classes
+  std::shared_ptr<ConformalLatticePlanner> conformal_lattice_planner_;
+  std::shared_ptr<GridCollisionChecker> collision_checker_;
+  std::shared_ptr<visualizer::Visualizer> visualizer_;
 
   tf2_ros::Buffer* tf_;
   costmap_2d::Costmap2DROS* costmap_ros_;
   geometry_msgs::PoseStamped current_pose_;
   std::vector<geometry_msgs::PoseStamped> global_plan_;
-  base_local_planner::LocalPlannerUtil planner_util_;
-  std::shared_ptr<ConformalLatticePlanner> conformal_lattice_planner_;
   bool initialized_;
 };
 
