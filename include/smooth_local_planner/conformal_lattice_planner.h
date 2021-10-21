@@ -26,6 +26,9 @@ class ConformalLatticePlanner {
   ~ConformalLatticePlanner();
 
   bool plan(std::vector<SpiralPath>& paths,
+            geometry_msgs::PoseStamped& lookahead_goal_pose,
+            std::vector<geometry_msgs::PoseStamped>& goal_poses,
+            std::vector<double>& obj_costs,
             const nav_msgs::Path& global_plan) const;
 
  private:

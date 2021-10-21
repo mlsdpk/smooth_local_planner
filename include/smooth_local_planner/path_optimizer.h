@@ -75,9 +75,10 @@ class PathOptimizer {
    * @param xf goal point x
    * @param yf goal point y
    * @param thetaf goal point heading
+   * @return the cost of the objective
    */
-  void optimizeSpiral(SpiralPath& spiral, const double& xf, const double& yf,
-                      const double& thetaf);
+  double optimizeSpiral(SpiralPath& spiral, const double& xf, const double& yf,
+                        const double& thetaf);
 
   /**
    * @brief Samples a set of points along the spiral given the optimization

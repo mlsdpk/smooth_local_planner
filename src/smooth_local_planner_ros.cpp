@@ -14,6 +14,14 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
     // ros parameters
     // most of the parameters will be handled in its own classes
     private_nh.param("lattice_paths_pub", lattice_paths_pub_, false);
+    private_nh.param("global_path_distance_bias", global_path_distance_bias_,
+                     1.0);
+    private_nh.param("collidiing_path_distance_bias",
+                     collidiing_path_distance_bias_, 1.0);
+    private_nh.param("debug", debug_, false);
+
+    debug_msg_pub_ =
+        private_nh.advertise<smooth_local_planner::DebugMsg>("debug_msg", 10);
 
     tf_ = tf;
     costmap_ros_ = costmap_ros;
@@ -47,9 +55,20 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
   transformGlobalPlan(transformed_plan, current_pose_);
 
   // conformal lattice planning
-  // resultant lattice paths are now in robot frame
+  // resultant lattice paths and lookahead_goal_pose are now in robot frame
   std::vector<SpiralPath> lattice_paths;
-  conformal_lattice_planner_->plan(lattice_paths, transformed_plan);
+  geometry_msgs::PoseStamped lookahead_goal_pose;
+  std::vector<geometry_msgs::PoseStamped> goal_poses;
+  std::vector<double> obj_costs;
+  conformal_lattice_planner_->plan(lattice_paths, lookahead_goal_pose,
+                                   goal_poses, obj_costs, transformed_plan);
+
+  if (debug_) {
+    DebugMsg msg;
+    msg.objective_costs.resize(obj_costs.size());
+    msg.objective_costs.swap(obj_costs);
+    debug_msg_pub_.publish(msg);
+  }
 
   // once the lattice paths are generated, we perform collision checking for
   // each path and remove the collision ones
@@ -91,11 +110,20 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
   std::vector<bool> collision_status;
   collision_checker_->checkCollision(collision_status, paths);
 
+  // now choose the best lattice path which minimizes the given objective.
+
+  std::size_t best_path_idx;
+  bool local_path_exists = getBestPathIndex(
+      best_path_idx, lattice_paths, lookahead_goal_pose, collision_status);
+
   // visualize everything
   if (lattice_paths_pub_) {
-    visualizer_->publishMarkers(lattice_paths, collision_status);
+    visualizer_->publishMarkers(lattice_paths, goal_poses, collision_status);
   }
   visualizer_->publishGlobalPlan(transformed_plan);
+  // temporary conditional statement for visualizing local path
+  if (local_path_exists)
+    visualizer_->publishLocalPlan(lattice_paths, best_path_idx);
 
   return true;
 }
@@ -178,6 +206,65 @@ bool SmoothLocalPlannerROS::transformPose(
     ROS_ERROR("Exception in transformPose: %s", ex.what());
   }
   return false;
+}
+
+bool SmoothLocalPlannerROS::getBestPathIndex(
+    std::size_t& idx, const std::vector<SpiralPath>& paths,
+    const geometry_msgs::PoseStamped& lookahead_goal_pose,
+    const std::vector<bool>& collision_status) const {
+  // current score function does not consider distance from obstacles yet
+  // we will see how we can add more objectives in our score function in the
+  // future releases
+  //
+  // score function =
+  //      path_distance_bias * (distance from global path) +
+  //      collidiing_path_distance_bias * (distance from other colliding paths
+  //      if exists) +
+  bool success = false;
+  double best_score = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < paths.size(); ++i) {
+    double score = std::numeric_limits<double>::infinity();
+
+    if (!collision_status[i]) {
+      // calculate distance from global path
+      std::size_t i_size = paths[i].x_points.size();
+      double dist_from_global =
+          std::sqrt(std::pow(paths[i].x_points[i_size - 1] -
+                                 lookahead_goal_pose.pose.position.x,
+                             2) +
+                    std::pow(paths[i].y_points[i_size - 1] -
+                                 lookahead_goal_pose.pose.position.y,
+                             2));
+
+      // distance from other colliding paths
+      double dist_from_colliding_paths = 0.0;
+      for (std::size_t j = 0; j < paths.size(); ++j) {
+        if (j == i) continue;
+        if (collision_status[j]) {
+          std::size_t j_size = paths[j].x_points.size();
+          dist_from_colliding_paths +=
+              std::sqrt(std::pow(paths[i].x_points[i_size - 1] -
+                                     paths[j].x_points[j_size - 1],
+                                 2) +
+                        std::pow(paths[i].y_points[i_size - 1] -
+                                     paths[j].y_points[j_size - 1],
+                                 2));
+        }
+      }
+
+      // total score
+      score = global_path_distance_bias_ * dist_from_global +
+              collidiing_path_distance_bias_ * dist_from_colliding_paths;
+    }
+
+    // set the best index to be the path index with the lowest score
+    if (score < best_score) {
+      best_score = score;
+      idx = i;
+      success = true;
+    }
+  }
+  return success;
 }
 
 bool SmoothLocalPlannerROS::isGoalReached() {

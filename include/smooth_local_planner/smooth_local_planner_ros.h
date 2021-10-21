@@ -6,6 +6,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_core/base_local_planner.h>
 #include <nav_msgs/Path.h>
+#include <smooth_local_planner/DebugMsg.h>
 #include <smooth_local_planner/collision_checker.h>
 #include <smooth_local_planner/conformal_lattice_planner.h>
 #include <smooth_local_planner/visualizer.h>
@@ -42,9 +43,18 @@ class SmoothLocalPlannerROS : public nav_core::BaseLocalPlanner {
   bool transformPose(const geometry_msgs::PoseStamped& in_pose,
                      geometry_msgs::PoseStamped& out_pose,
                      const std::string& frame) const;
+  bool getBestPathIndex(std::size_t& idx, const std::vector<SpiralPath>& paths,
+                        const geometry_msgs::PoseStamped& lookahead_goal_pose,
+                        const std::vector<bool>& collision_status) const;
 
   // parameters
   bool lattice_paths_pub_;
+  double global_path_distance_bias_;
+  double collidiing_path_distance_bias_;
+  bool debug_;
+
+  // publishers
+  ros::Publisher debug_msg_pub_;
 
   // main classes
   std::shared_ptr<ConformalLatticePlanner> conformal_lattice_planner_;

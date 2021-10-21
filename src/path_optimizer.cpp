@@ -140,8 +140,8 @@ PathOptimizer::PathOptimizer(double max_curvature)
 
 PathOptimizer::~PathOptimizer() {}
 
-void PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
-                                   const double& yf, const double& thetaf) {
+double PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
+                                     const double& yf, const double& thetaf) {
   // this function assumes xf, yf and thetaf are in the robot coordinate frame
   // user must transform the global path segment into robot frame before calling
   // this function
@@ -175,6 +175,8 @@ void PathOptimizer::optimizeSpiral(SpiralPath& spiral, const double& xf,
   // samples the spiral along its arc length to generate a
   // discrete set of x, y, and theta points for a path.
   sampleSpiral(spiral, p);
+
+  return solution.obj_value;
 }
 
 void PathOptimizer::sampleSpiral(SpiralPath& spiral,

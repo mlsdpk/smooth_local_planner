@@ -31,12 +31,14 @@ ConformalLatticePlanner::ConformalLatticePlanner(const std::string& name) {
 
 ConformalLatticePlanner::~ConformalLatticePlanner() {}
 
-bool ConformalLatticePlanner::plan(std::vector<SpiralPath>& paths,
-                                   const nav_msgs::Path& global_plan) const {
+bool ConformalLatticePlanner::plan(
+    std::vector<SpiralPath>& paths,
+    geometry_msgs::PoseStamped& lookahead_goal_pose,
+    std::vector<geometry_msgs::PoseStamped>& goal_poses,
+    std::vector<double>& obj_costs, const nav_msgs::Path& global_plan) const {
   // now we find the local goal pose
   // find the first pose in the tranformed local plan which is at a distance
   // greater than the lookahead distance
-  geometry_msgs::PoseStamped lookahead_goal_pose;
 
   auto goal_pose_it = std::find_if(
       global_plan.poses.begin(), global_plan.poses.end(), [&](const auto& ps) {
@@ -55,15 +57,15 @@ bool ConformalLatticePlanner::plan(std::vector<SpiralPath>& paths,
   // based on the number of sampled paths and offset distance defined by the
   // user, we find more goal poses which are laterally offset with respect to
   // the goal heading.
-  std::vector<geometry_msgs::PoseStamped> goal_poses;
   generateGoalSet(goal_poses, lookahead_goal_pose);
 
   paths.resize(goal_poses.size());
+  obj_costs.resize(goal_poses.size());
   for (std::size_t i = 0; i < goal_poses.size(); ++i) {
     paths[i].frame_id = global_plan.header.frame_id;
-    optimizer_->optimizeSpiral(paths[i], goal_poses[i].pose.position.x,
-                               goal_poses[i].pose.position.y,
-                               tf2::getYaw(goal_poses[i].pose.orientation));
+    obj_costs[i] = optimizer_->optimizeSpiral(
+        paths[i], goal_poses[i].pose.position.x, goal_poses[i].pose.position.y,
+        tf2::getYaw(goal_poses[i].pose.orientation));
   }
   return true;
 }

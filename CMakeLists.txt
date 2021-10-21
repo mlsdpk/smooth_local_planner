@@ -23,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_geometry_msgs
   tf2_ros
+  message_generation
 )
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
@@ -39,6 +40,16 @@ include_directories(
 )
 
 add_definitions(${EIGEN3_DEFINITIONS})
+
+add_message_files(
+  FILES
+  DebugMsg.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
 
 catkin_package(
   INCLUDE_DIRS 

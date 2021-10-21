@@ -34,7 +34,7 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 ### Optimizer related parameters
 
 - ~\<name>\/min_turning_radius (double, default: 0.2)  
-    Minimum turning radius of a carlike robot (set to zero for a diff-drive robot).
+    Minimum turning radius of a carlike robot (set to zero for a diff-drive robot)
 
 - ~\<name>\/penalty_alpha (double, default: 25.0)  
     The weight of the penalty function for x position
@@ -47,6 +47,19 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 
 - ~\<name>\/simpson_intervals (int, default: 8)  
     The n intervals of Simpson's rule (n must be EVEN) 
+
+### Path Scoring Function related parameters
+
+- ~\<name>\/global_path_distance_bias (double, default: 1.0)  
+    The weighting for how much the local planner should stay close to the global path it was given
+
+- ~\<name>\/collidiing_path_distance_bias (double, default: 1.0)  
+    The weighting for how much the local planner should stay away from the other colliding lattice paths
+
+### Debuging related parameters
+
+- ~\<name>\/debug (bool, default: false)  
+    Publish debugging messages if it is set to true.
 
 ## References
 
