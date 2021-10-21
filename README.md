@@ -15,6 +15,9 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 - ~\<name>\/lattice_path_markers (visualization_msgs/MarkerArray)  
     The local path segments produced by the lattice planner. Used primarily for visualization purposes.
 
+- ~\<name>\/debug_msg (smooth_local_planner/DebugMsg)  
+    Publish all the debugging messages if *debug* ros parameter is set to True.
+
 ## Parameters
 
 ### Conformal Lattice Planner related parameters
