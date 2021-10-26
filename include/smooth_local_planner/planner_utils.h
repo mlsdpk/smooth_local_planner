@@ -56,6 +56,11 @@ inline void getSpiralParameters(
                     pow(optimization_params.p4, 3);
 };
 
+struct GoalPoseWithSpeed {
+  geometry_msgs::PoseStamped pose;
+  double velocity;
+};
+
 namespace planner_utils {
 
 inline void linSpace(std::vector<double>& vec, const double& start,
@@ -74,7 +79,7 @@ inline void linSpace(std::vector<double>& vec, const double& start,
     vec[i] = start + delta * i;
   }
   vec[n - 1] = end;
-}
+}  // namespace smooth_local_planner
 
 /**
  * @brief Composite Trapezoidal Rule. Approximate the integral on a given
@@ -122,6 +127,11 @@ inline double euclidean_distance(const geometry_msgs::PoseStamped& pos1,
   return euclidean_distance(pos1.pose, pos2.pose);
 }
 
+inline double euclidean_distance(const double& x1, const double& y1,
+                                 const double& x2, const double& y2) {
+  return std::sqrt(std::pow(x2 - x1, 2) + std::pow(y2 - y1, 2));
+}
+
 /**
  * Find element in iterator with the minimum calculated value
  */
@@ -148,7 +158,5 @@ inline void convertToQuaternion(const double& angle,
   q.setRPY(0, 0, angle);
   quat = tf2::toMsg(q);
 }
-
 };  // namespace planner_utils
-
 };  // namespace smooth_local_planner

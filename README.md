@@ -16,14 +16,17 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
     The local path segments produced by the lattice planner. Used primarily for visualization purposes.
 
 - ~\<name>\/debug_msg (smooth_local_planner/DebugMsg)  
-    Publish all the debugging messages if *debug* ros parameter is set to True.
+    The debug message contains the cost values of the objective function used by the optimizer. Used primarily for evaluation and debugging. Parameter ~<name>/debug must be enabled.
 
 ## Parameters
 
-### Conformal Lattice Planner related parameters
+### Conformal Lattice Planner Parameters
 
-- ~\<name>\/lookahead_goal_dist (double, default: 1.0)  
-    The lookahead goal distance in meters
+- ~\<name>\/lookahead_base_dist (double, default: 1.0)  
+    The based lookahead goal distance in meters
+
+- ~\<name>\/lookahead_time (double, default: 1.0)  
+    Number of seconds to lookahead in the future after lookahead_base_dist
 
 - ~\<name>\/lattice_path_samples (int, default: 7)  
     The number of sampled lattice paths
@@ -34,7 +37,7 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 - ~\<name>\/lattice_paths_pub (bool, default: false)  
     Whether or not publish the lattice path markers
 
-### Optimizer related parameters
+### Optimizer Parameters
 
 - ~\<name>\/min_turning_radius (double, default: 0.2)  
     Minimum turning radius of a carlike robot (set to zero for a diff-drive robot)
@@ -51,7 +54,7 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 - ~\<name>\/simpson_intervals (int, default: 8)  
     The n intervals of Simpson's rule (n must be EVEN) 
 
-### Path Scoring Function related parameters
+### Path Scoring Function Parameters
 
 - ~\<name>\/global_path_distance_bias (double, default: 1.0)  
     The weighting for how much the local planner should stay close to the global path it was given
@@ -59,10 +62,40 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 - ~\<name>\/collidiing_path_distance_bias (double, default: 1.0)  
     The weighting for how much the local planner should stay away from the other colliding lattice paths
 
-### Debuging related parameters
+### Velocity Profile Generation Parameters
+
+- ~\<name>\/ref_vel (double, default: 0.15)  
+    The reference velocity for the robot to follow the global path in m/s
+
+- ~\<name>\/max_vel_x (double, default: 0.22)  
+    The maximum translational velocity of the robot in x-direction in m/s
+
+- ~\<name>\/acc_lim_x (double, default: 2.5)  
+    The maximum acceleration of the robot in x-direction in m/s^2
+
+### Controller Parameters
+
+- ~\<name>\/lookahead_dist (double, default: 0.2)  
+    The lookahead distance of the pure pursuit path tracking algorithm in meters
+    
+### Goal Tolerance Parameters
+
+- ~\<name>\/xy_goal_tolerance (double, default: 0.2)  
+    Allowed final euclidean distance to the goal position in meters
+
+- ~\<name>\/yaw_goal_tolerance (double, default: 0.2)  
+    Allowed final orientation error in radians
+
+### Other Parameters
+
+- ~\<name>\/odom_topic (string, default: "odom")  
+    Topic name of the odometry message, provided by the robot driver or simulator
+
+- ~\<name>\/planning_frequency (double, default: 10.0)  
+    The frequency at which the lattice planning and velocity profile generation will be called in Hz. This frequency cannot be greater than controller_frequency, otherwise it will be set the same as controller_frequency
 
 - ~\<name>\/debug (bool, default: false)  
-    Publish debugging messages if it is set to true.
+    Publish debugging messages if it is set to true
 
 ## References
 

@@ -26,10 +26,9 @@ class ConformalLatticePlanner {
   ~ConformalLatticePlanner();
 
   bool plan(std::vector<SpiralPath>& paths,
-            geometry_msgs::PoseStamped& lookahead_goal_pose,
             std::vector<geometry_msgs::PoseStamped>& goal_poses,
             std::vector<double>& obj_costs,
-            const nav_msgs::Path& global_plan) const;
+            const geometry_msgs::PoseStamped& lookahead_goal_pose) const;
 
  private:
   void generateGoalSet(
@@ -38,7 +37,7 @@ class ConformalLatticePlanner {
 
   std::shared_ptr<PathOptimizer> optimizer_;
 
-  double lookahead_goal_dist_;
+  // ros parameters
   int lattice_path_samples_;
   double lattice_path_offset_;
   double min_turning_radius_;

@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   pluginlib
   nav_core
+  angles
   nav_msgs
   base_local_planner
   costmap_2d
@@ -44,11 +45,13 @@ add_definitions(${EIGEN3_DEFINITIONS})
 add_message_files(
   FILES
   DebugMsg.msg
+  Trajectory2DMsg.msg
 )
 
 generate_messages(
   DEPENDENCIES
   std_msgs
+  geometry_msgs
 )
 
 catkin_package(
@@ -79,6 +82,8 @@ add_library(smooth_local_planner
   src/path_optimizer.cpp
   src/conformal_lattice_planner.cpp
   src/visualizer.cpp
+  src/velocity_planner.cpp
+  src/controller.cpp
 )
 
 add_dependencies(smooth_local_planner 

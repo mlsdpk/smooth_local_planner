@@ -2,7 +2,8 @@
 
 namespace smooth_local_planner {
 
-SmoothLocalPlannerROS::SmoothLocalPlannerROS() : initialized_{false} {}
+SmoothLocalPlannerROS::SmoothLocalPlannerROS()
+    : initialized_{false}, goal_reached_{false} {}
 
 SmoothLocalPlannerROS::~SmoothLocalPlannerROS() {}
 
@@ -13,13 +14,57 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
 
     // ros parameters
     // most of the parameters will be handled in its own classes
+    std::string odom_topic = "odom";
+    private_nh.param("odom_topic", odom_topic, odom_topic);
     private_nh.param("lattice_paths_pub", lattice_paths_pub_, false);
     private_nh.param("global_path_distance_bias", global_path_distance_bias_,
                      1.0);
     private_nh.param("collidiing_path_distance_bias",
                      collidiing_path_distance_bias_, 1.0);
     private_nh.param("debug", debug_, false);
+    private_nh.param("xy_goal_tolerance", xy_goal_tolerance_, 0.2);
+    private_nh.param("yaw_goal_tolerance", yaw_goal_tolerance_, 0.2);
+    private_nh.param("ref_vel", ref_vel_, 0.15);
+    private_nh.param("lookahead_base_dist", lookahead_base_dist_, 1.0);
+    private_nh.param("lookahead_time", lookahead_time_, 1.0);
 
+    // Assuming this planner is being run within the navigation stack, we can
+    // just do an upward search for the frequency at which its being run. This
+    // also allows the frequency to be overwritten locally.
+    std::string controller_frequency_param_name;
+    double controller_frequency = 0.0;
+    if (!private_nh.searchParam("controller_frequency",
+                                controller_frequency_param_name)) {
+      ROS_ERROR(
+          "controller_frequency parameter not found. Make sure it has been "
+          "set. Exiting...");
+      exit(1);
+    } else {
+      private_nh.param(controller_frequency_param_name, controller_frequency,
+                       controller_frequency);
+      if (controller_frequency <= 0) {
+        ROS_ERROR("A controller_frequency must be greater than 0.");
+        exit(1);
+      }
+    }
+    ROS_INFO("controller_frequency is set to %.2f", controller_frequency);
+
+    // planning frequency for lattice planning and velocity profile generation
+    // this must be lower than controller_frequency
+    // usually set as half of the controller_frequency
+    private_nh.param("planning_frequency", planning_frequency_, 10.0);
+    if (planning_frequency_ > controller_frequency) {
+      ROS_WARN(
+          "A smooth_local_planner planning_frequency greater than "
+          "controller_frequency has been set. Ignoring the parameter, assuming "
+          "the same rate of %.2fHz as controller_frequency.",
+          controller_frequency);
+      planning_frequency_ = controller_frequency;
+    }
+    ROS_INFO("smooth_local_planner planning_frequency is set to %.2f",
+             planning_frequency_);
+
+    // publishers
     debug_msg_pub_ =
         private_nh.advertise<smooth_local_planner::DebugMsg>("debug_msg", 10);
 
@@ -29,6 +74,7 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
     // get the current robot pose in the map frame
     costmap_ros_->getRobotPose(current_pose_);
 
+    // main classes initialization
     conformal_lattice_planner_ =
         std::make_shared<ConformalLatticePlanner>(name);
 
@@ -37,6 +83,15 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
 
     visualizer_ = std::make_shared<visualizer::Visualizer>(name);
 
+    odom_helper_ =
+        std::make_shared<base_local_planner::OdometryHelperRos>(odom_topic);
+
+    velocity_planner_ =
+        std::make_shared<VelocityPlanner>(name, odom_helper_.get());
+
+    controller_ = std::make_shared<Controller>(name);
+
+    planning_init_time_ = ros::Time::now();
     initialized_ = true;
   }
 }
@@ -48,96 +103,141 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
     return false;
   }
 
-  // transform the global plan into robot frame
+  // transform the global plan into local frame
   // this also removes part of the path that is outside of the local
   // costmap and also prunes the path behind the robot
   nav_msgs::Path transformed_plan;
-  transformGlobalPlan(transformed_plan, current_pose_);
-
-  // conformal lattice planning
-  // resultant lattice paths and lookahead_goal_pose are now in robot frame
-  std::vector<SpiralPath> lattice_paths;
-  geometry_msgs::PoseStamped lookahead_goal_pose;
-  std::vector<geometry_msgs::PoseStamped> goal_poses;
-  std::vector<double> obj_costs;
-  conformal_lattice_planner_->plan(lattice_paths, lookahead_goal_pose,
-                                   goal_poses, obj_costs, transformed_plan);
-
-  if (debug_) {
-    DebugMsg msg;
-    msg.objective_costs.resize(obj_costs.size());
-    msg.objective_costs.swap(obj_costs);
-    debug_msg_pub_.publish(msg);
+  if (!transformGlobalPlan(transformed_plan, current_pose_)) {
+    ROS_WARN(
+        "Could not transform the global plan to the frame of the controller");
+    return false;
   }
 
-  // once the lattice paths are generated, we perform collision checking for
-  // each path and remove the collision ones
+  // here we check whether the robot is within the goal region or not
+  // TODO: make sure robot stopped with zero velocity
+  if (isRobotWithinGoalTolerances()) {
+    goal_reached_ = true;
+    return true;
+  }
 
-  // auto init_time1 = std::chrono::system_clock::now();
+  // behavior planning, lattice planning and velocity profile generation must
+  // operate in lower rate than controller
+  if ((ros::Time::now() - planning_init_time_).toSec() >
+      (1.0 / planning_frequency_)) {
+    // Here we perform behavior planning.
+    // We obtain the lookahead goal pose from the transformed local plan and
+    // set the speed to the lookahead goal pose.
+    // In the future, this can be integrated with dynamic object detections to
+    // generate different behaviors. This lookahead goal pose distance should be
+    // chosen based on robot current speed.
+    GoalPoseWithSpeed goal_pose_with_speed;
+    setLookAheadGoalPoseAndSpeed(goal_pose_with_speed, transformed_plan);
 
-  // first we need to convert paths into global frame
-  // TODO(Phone): need to make this conversion faster
-  std::vector<nav_msgs::Path> paths;
-  paths.resize(lattice_paths.size());
-  const std::string global_frame_id = costmap_ros_->getGlobalFrameID();
+    // conformal lattice planning
+    // resultant lattice paths and lookahead_goal_pose are now in local frame
+    std::vector<SpiralPath> lattice_paths;
+    std::vector<geometry_msgs::PoseStamped> goal_poses;
+    std::vector<double> obj_costs;
+    conformal_lattice_planner_->plan(lattice_paths, goal_poses, obj_costs,
+                                     goal_pose_with_speed.pose);
 
-  for (std::size_t i = 0; i < paths.size(); i++) {
-    nav_msgs::Path temp_path;
-    temp_path.header.frame_id = global_frame_id;
-    // TODO: make sure spiral x, y and theta points have same length
-    std::size_t s_size = lattice_paths[i].x_points.size();
-    temp_path.poses.resize(s_size);
-    for (std::size_t j = 0; j < s_size; ++j) {
-      geometry_msgs::PoseStamped temp_pose;
-      temp_pose.header.frame_id = lattice_paths[i].frame_id;
-      temp_pose.pose.position.x = lattice_paths[i].x_points[j];
-      temp_pose.pose.position.y = lattice_paths[i].y_points[j];
-      planner_utils::convertToQuaternion(lattice_paths[i].theta_points[j],
-                                         temp_pose.pose.orientation);
-      if (!transformPose(temp_pose, temp_path.poses[j], global_frame_id)) {
-        throw("Unable to transform robot pose into global plan's frame");
-      }
+    if (debug_) {
+      DebugMsg msg;
+      msg.objective_costs.resize(obj_costs.size());
+      msg.objective_costs.swap(obj_costs);
+      debug_msg_pub_.publish(msg);
     }
-    paths[i].header.frame_id = temp_path.header.frame_id;
-    paths[i].poses.swap(temp_path.poses);
+
+    // once the lattice paths are generated, we perform collision checking for
+    // each path and remove the collision ones
+
+    // first we need to convert paths into global frame
+    // TODO(Phone): need to make this conversion faster
+    std::vector<nav_msgs::Path> paths;
+    paths.resize(lattice_paths.size());
+    const std::string global_frame_id = costmap_ros_->getGlobalFrameID();
+
+    for (std::size_t i = 0; i < paths.size(); i++) {
+      nav_msgs::Path temp_path;
+      temp_path.header.frame_id = global_frame_id;
+      // TODO: make sure spiral x, y and theta points have same length
+      std::size_t s_size = lattice_paths[i].x_points.size();
+      temp_path.poses.resize(s_size);
+      for (std::size_t j = 0; j < s_size; ++j) {
+        geometry_msgs::PoseStamped temp_pose;
+        temp_pose.header.frame_id = lattice_paths[i].frame_id;
+        temp_pose.pose.position.x = lattice_paths[i].x_points[j];
+        temp_pose.pose.position.y = lattice_paths[i].y_points[j];
+        planner_utils::convertToQuaternion(lattice_paths[i].theta_points[j],
+                                           temp_pose.pose.orientation);
+        if (!transformPose(temp_pose, temp_path.poses[j], global_frame_id)) {
+          throw("Unable to transform robot pose into global plan's frame");
+        }
+      }
+      paths[i].header.frame_id = temp_path.header.frame_id;
+      paths[i].poses.swap(temp_path.poses);
+    }
+
+    std::vector<bool> collision_status;
+    collision_checker_->checkCollision(collision_status, paths);
+
+    // now choose the best lattice path which minimizes the given objective.
+    std::size_t best_path_idx;
+    bool local_path_exists =
+        getBestPathIndex(best_path_idx, lattice_paths,
+                         goal_pose_with_speed.pose, collision_status);
+
+    // velocity profile generation
+    Trajectory2DMsg trajectory_msg;
+    velocity_planner_->computeVelocityProfile(trajectory_msg,
+                                              lattice_paths[best_path_idx],
+                                              goal_pose_with_speed.velocity);
+
+    // std::cout << "velocity" << std::endl;
+    // for (std::size_t i = 0; i < trajectory_msg.velocity.size(); ++i) {
+    //   std::cout << trajectory_msg.velocity[i] << std::endl;
+    // }
+    // std::cout << "---" << std::endl;
+
+    // TODO: linear interpolation between trajectory points to obtain a fine
+    // resolution
+
+    // if local path exists, update the controller
+    if (local_path_exists) controller_->updateTrajectory(trajectory_msg);
+
+    // visualize lattice paths
+    if (lattice_paths_pub_) {
+      visualizer_->publishMarkers(lattice_paths, goal_poses, collision_status);
+    }
+
+    planning_init_time_ = ros::Time::now();
   }
 
-  // auto time_diff1 = std::chrono::duration_cast<std::chrono::microseconds>(
-  //                       std::chrono::system_clock::now() - init_time1)
-  //                       .count();
-  // std::cout << "path converting time diff: " << time_diff1 << std::endl;
+  // controller
+  controller_->updateControls(cmd_vel, current_pose_);
 
-  std::vector<bool> collision_status;
-  collision_checker_->checkCollision(collision_status, paths);
-
-  // now choose the best lattice path which minimizes the given objective.
-
-  std::size_t best_path_idx;
-  bool local_path_exists = getBestPathIndex(
-      best_path_idx, lattice_paths, lookahead_goal_pose, collision_status);
-
-  // visualize everything
-  if (lattice_paths_pub_) {
-    visualizer_->publishMarkers(lattice_paths, goal_poses, collision_status);
-  }
+  // visualize transformed and pruned global plan
   visualizer_->publishGlobalPlan(transformed_plan);
-  // temporary conditional statement for visualizing local path
-  if (local_path_exists)
-    visualizer_->publishLocalPlan(lattice_paths, best_path_idx);
+  // TODO(Phone): visualize local path that the controller is currently
+  // attempting to follow
+  // if (local_path_exists)
+  //   visualizer_->publishLocalPlan(lattice_paths, best_path_idx);
 
   return true;
 }
 
-void SmoothLocalPlannerROS::transformGlobalPlan(
+bool SmoothLocalPlannerROS::transformGlobalPlan(
     nav_msgs::Path& transformed_plan, const geometry_msgs::PoseStamped& pose) {
   if (global_plan_.empty()) {
-    throw("Received plan with zero length");
+    ROS_ERROR("Received plan with zero length");
+    return false;
   }
 
   // let's get the pose of the robot in the frame of the plan
   geometry_msgs::PoseStamped robot_pose;
   if (!transformPose(pose, robot_pose, global_plan_[0].header.frame_id)) {
-    throw("Unable to transform robot pose into global plan's frame");
+    ROS_ERROR("Unable to transform robot pose into global plan's frame");
+    return false;
   }
 
   // We'll discard points on the plan that are outside the local costmap
@@ -186,8 +286,10 @@ void SmoothLocalPlannerROS::transformGlobalPlan(
   global_plan_.erase(std::begin(global_plan_), transformation_begin);
 
   if (transformed_plan.poses.empty()) {
-    throw("Resulting plan has 0 poses in it.");
+    ROS_ERROR("Resulting plan has 0 poses in it.");
+    return false;
   }
+  return true;
 }
 
 bool SmoothLocalPlannerROS::transformPose(
@@ -274,9 +376,33 @@ bool SmoothLocalPlannerROS::isGoalReached() {
         "before using this planner");
     return false;
   }
-  if (!costmap_ros_->getRobotPose(current_pose_)) {
-    ROS_ERROR("Could not get robot pose");
-    return false;
+  if (goal_reached_) {
+    ROS_INFO("GOAL Reached!");
+    return true;
+  }
+  return false;
+}
+
+bool SmoothLocalPlannerROS::isRobotWithinGoalTolerances() {
+  const geometry_msgs::PoseStamped& plan_goal_pose = global_plan_.back();
+  geometry_msgs::TransformStamped plan_to_global_transform =
+      tf_->lookupTransform(costmap_ros_->getGlobalFrameID(), ros::Time(),
+                           plan_goal_pose.header.frame_id,
+                           plan_goal_pose.header.stamp,
+                           plan_goal_pose.header.frame_id, ros::Duration(0.5));
+
+  geometry_msgs::PoseStamped global_goal;
+  tf2::doTransform(global_plan_.back(), global_goal, plan_to_global_transform);
+
+  const double dx = global_goal.pose.position.x - current_pose_.pose.position.x;
+  const double dy = global_goal.pose.position.y - current_pose_.pose.position.y;
+  const double dth = angles::shortest_angular_distance(
+      tf2::getYaw(current_pose_.pose.orientation),
+      tf2::getYaw(global_goal.pose.orientation));
+
+  if (fabs(std::sqrt(dx * dx + dy * dy)) < xy_goal_tolerance_ &&
+      fabs(dth) < yaw_goal_tolerance_) {
+    return true;
   }
   return false;
 }
@@ -290,7 +416,39 @@ bool SmoothLocalPlannerROS::setPlan(
     return false;
   }
   global_plan_ = plan;
+
+  // reset goal_reached_ flag
+  goal_reached_ = false;
   return true;
+}
+
+void SmoothLocalPlannerROS::setLookAheadGoalPoseAndSpeed(
+    GoalPoseWithSpeed& goal_pose, const nav_msgs::Path& global_plan) {
+  // get the current robot speed
+  geometry_msgs::PoseStamped curr_robot_vel;
+  odom_helper_->getRobotVel(curr_robot_vel);
+
+  // find the first pose in the tranformed local plan which is at a distance
+  // greater than the lookahead distance
+  // calculate lookahead distance based on current robot speed
+  const double lookahead_dist =
+      lookahead_base_dist_ + curr_robot_vel.pose.position.x * lookahead_time_;
+
+  goal_pose.velocity = ref_vel_;
+  auto goal_pose_it = std::find_if(
+      global_plan.poses.begin(), global_plan.poses.end(), [&](const auto& ps) {
+        return std::hypot(ps.pose.position.x, ps.pose.position.y) >=
+               lookahead_dist;
+      });
+
+  // If no pose is not far enough, take the last pose
+  // also set the final goal pose speed to be zero
+  if (goal_pose_it == global_plan.poses.end()) {
+    goal_pose_it = std::prev(global_plan.poses.end());
+    goal_pose.velocity = 0.0;
+  }
+  goal_pose.pose.header.frame_id = global_plan.header.frame_id;
+  goal_pose.pose = *goal_pose_it;
 }
 
 };  // namespace smooth_local_planner
