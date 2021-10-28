@@ -17,18 +17,16 @@ void Visualizer::publishGlobalPlan(const nav_msgs::Path& plan) {
   global_path_pub_.publish(plan);
 }
 
-void Visualizer::publishLocalPlan(const std::vector<SpiralPath>& paths,
-                                  const std::size_t& idx) {
+void Visualizer::publishLocalPlan(const Trajectory2DMsg& traj) {
   nav_msgs::Path path_msg;
-  path_msg.header.frame_id = paths[idx].frame_id;
+  path_msg.header.frame_id = traj.header.frame_id;
   path_msg.header.stamp = ros::Time::now();
-  std::size_t s_size = paths[idx].x_points.size();
+  std::size_t s_size = traj.poses.size();
   path_msg.poses.resize(s_size);
   for (std::size_t i = 0; i < s_size; ++i) {
-    path_msg.poses[i].pose.position.x = paths[idx].x_points[i];
-    path_msg.poses[i].pose.position.y = paths[idx].y_points[i];
-    planner_utils::convertToQuaternion(paths[idx].theta_points[i],
-                                       path_msg.poses[i].pose.orientation);
+    path_msg.poses[i].pose.position.x = traj.poses[i].position.x;
+    path_msg.poses[i].pose.position.y = traj.poses[i].position.y;
+    path_msg.poses[i].pose.orientation = traj.poses[i].orientation;
   }
   local_path_pub_.publish(path_msg);
 }

@@ -21,8 +21,8 @@ class VelocityPlanner {
   ~VelocityPlanner();
 
   void computeVelocityProfile(Trajectory2DMsg& trajectory_msg,
-                              const SpiralPath& best_path,
-                              const double& desired_vel);
+                              const nav_msgs::Path& best_path,
+                              const double& desired_vel, const double& ref_vel);
 
   double calculateDistance(const double& v_i, const double& v_f,
                            const double& a) const;

@@ -5,6 +5,7 @@
 #include <geometry_msgs/Twist.h>
 #include <smooth_local_planner/Trajectory2DMsg.h>
 #include <smooth_local_planner/planner_utils.h>
+#include <tf2_ros/buffer.h>
 
 #include <limits>
 
@@ -20,7 +21,8 @@ class Controller {
   /**
    * @brief Constructor
    */
-  Controller(const std::string& name);
+  Controller(const std::string& name, tf2_ros::Buffer* tf,
+             const std::string& robot_base_frame);
 
   /**
    * @brief Destructor
@@ -33,12 +35,15 @@ class Controller {
                       const geometry_msgs::PoseStamped& pose);
 
   geometry_msgs::Pose getLookAheadPose() const { return lookahead_pose_; };
+  Trajectory2DMsg getCurrentTrajectory() const { return trajectory_; };
 
  private:
   void updateLookAheadPose();
   void updateDesiredVelocity(double& vx,
                              const geometry_msgs::PoseStamped& pose);
 
+  tf2_ros::Buffer* tf_;
+  std::string robot_base_frame_;
   Trajectory2DMsg trajectory_;
   geometry_msgs::Pose lookahead_pose_;
 

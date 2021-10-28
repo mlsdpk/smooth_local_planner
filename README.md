@@ -18,6 +18,11 @@ The smooth_local_planner ROS package implements the custom local planner plugin 
 - ~\<name>\/debug_msg (smooth_local_planner/DebugMsg)  
     The debug message contains the cost values of the objective function used by the optimizer. Used primarily for evaluation and debugging. Parameter ~<name>/debug must be enabled.
 
+## Subscribed Topics
+
+- ~\<name>\/odom (nav_msgs/Odometry)  
+    Odometry information that gives the local planner the current speed of the robot. The velocity information in this message is assumed to be in the same coordinate frame as the robot_base_frame of the local costmap. See the [costmap_2d](http://wiki.ros.org/costmap_2d) package for information about the robot_base_frame parameter.
+
 ## Parameters
 
 ### Conformal Lattice Planner Parameters

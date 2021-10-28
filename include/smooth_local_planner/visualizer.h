@@ -3,6 +3,7 @@
 #include <geometry_msgs/PointStamped.h>
 #include <nav_msgs/Path.h>
 #include <ros/ros.h>
+#include <smooth_local_planner/Trajectory2DMsg.h>
 #include <smooth_local_planner/planner_utils.h>
 #include <visualization_msgs/MarkerArray.h>
 
@@ -49,8 +50,7 @@ class Visualizer {
   ~Visualizer();
 
   void publishGlobalPlan(const nav_msgs::Path& plan);
-  void publishLocalPlan(const std::vector<SpiralPath>& paths,
-                        const std::size_t& idx);
+  void publishLocalPlan(const Trajectory2DMsg& traj);
   void publishMarkers(const std::vector<SpiralPath>& paths,
                       const std::vector<geometry_msgs::PoseStamped>& goal_poses,
                       const std::vector<bool>& collision_status);

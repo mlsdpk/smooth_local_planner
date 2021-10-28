@@ -14,72 +14,215 @@ VelocityPlanner::VelocityPlanner(
 VelocityPlanner::~VelocityPlanner() {}
 
 void VelocityPlanner::computeVelocityProfile(Trajectory2DMsg& trajectory_msg,
-                                             const SpiralPath& best_path,
-                                             const double& desired_vel) {
+                                             const nav_msgs::Path& best_path,
+                                             const double& desired_vel,
+                                             const double& ref_vel) {
   // get the current robot speed
   geometry_msgs::PoseStamped curr_robot_vel;
   odom_helper_->getRobotVel(curr_robot_vel);
-  double curr_vel_x = curr_robot_vel.pose.position.x;
+  const double curr_vel_x = curr_robot_vel.pose.position.x;
+  const std::size_t path_size = best_path.poses.size();
 
-  // compute distance travelled from start speed to desired speed using a
-  // constant acceleration.
-  double accel_distance;
-  if (curr_vel_x >= desired_vel)
-    accel_distance = calculateDistance(curr_vel_x, desired_vel, -acc_lim_x_);
-  else
-    accel_distance = calculateDistance(curr_vel_x, desired_vel, acc_lim_x_);
-
-  // Here we will compute the end of the ramp for our velocity profile.
-  // At the end of the ramp, we will maintain our final speed.
-  std::size_t ramp_end_index = 0;
-  double distance = 0.0;
-  while ((ramp_end_index < best_path.x_points.size() - 1) &&
-         (distance < accel_distance)) {
-    distance += planner_utils::euclidean_distance(
-        best_path.x_points[ramp_end_index], best_path.y_points[ramp_end_index],
-        best_path.x_points[ramp_end_index + 1],
-        best_path.y_points[ramp_end_index + 1]);
-    ramp_end_index += 1;
+  // calculate total path length
+  double path_length = 0.0;
+  for (std::size_t i = 0; i < path_size - 1; ++i) {
+    path_length += planner_utils::euclidean_distance(
+        best_path.poses[i].pose.position.x, best_path.poses[i].pose.position.y,
+        best_path.poses[i + 1].pose.position.x,
+        best_path.poses[i + 1].pose.position.y);
   }
 
-  // Here we will actually compute the velocities along the ramp.
-  auto vi = curr_vel_x;
-  for (std::size_t i = 0; i < ramp_end_index; ++i) {
-    double vf = 0.0;
-    double dist = planner_utils::euclidean_distance(
-        best_path.x_points[i], best_path.y_points[i], best_path.x_points[i + 1],
-        best_path.y_points[i + 1]);
+  // when current velocity < desired velocity
+  // linear ramp-up profile
+  if (curr_vel_x < desired_vel) {
+    // linear ramp-up
+    double ramp_distance =
+        calculateDistance(curr_vel_x, desired_vel, acc_lim_x_);
 
-    if (curr_vel_x >= desired_vel) {
-      vf = calculateFinalSpeed(vi, -acc_lim_x_, dist);
-      // clamp speed to desired speed
-      if (vf < desired_vel) vf = desired_vel;
-    } else {
-      vf = calculateFinalSpeed(vi, acc_lim_x_, dist);
-      // clamp speed to desired speed
-      if (vf > desired_vel) vf = desired_vel;
+    // find the ramp end index which stops accelerating
+    std::size_t ramp_end_idx = 0;
+    double temp_dist = 0.0;
+    while ((ramp_end_idx < path_size - 1) && (temp_dist < ramp_distance)) {
+      temp_dist += planner_utils::euclidean_distance(
+          best_path.poses[ramp_end_idx].pose.position.x,
+          best_path.poses[ramp_end_idx].pose.position.y,
+          best_path.poses[ramp_end_idx + 1].pose.position.x,
+          best_path.poses[ramp_end_idx + 1].pose.position.y);
+      ramp_end_idx += 1;
     }
 
-    geometry_msgs::Pose pose;
-    pose.position.x = best_path.x_points[i];
-    pose.position.y = best_path.y_points[i];
-    planner_utils::convertToQuaternion(best_path.theta_points[i],
-                                       pose.orientation);
-    trajectory_msg.poses.emplace_back(pose);
-    trajectory_msg.velocity.push_back(vi);
-    vi = vf;
-  }
+    // compute the velocities along the ramp
+    auto vi = curr_vel_x;
+    for (std::size_t i = 0; i < ramp_end_idx + 1; ++i) {
+      double dist = planner_utils::euclidean_distance(
+          best_path.poses[i].pose.position.x,
+          best_path.poses[i].pose.position.y,
+          best_path.poses[i + 1].pose.position.x,
+          best_path.poses[i + 1].pose.position.y);
+      double vf = calculateFinalSpeed(vi, acc_lim_x_, dist);
+      // clamp speed to desired speed
+      if (vf > desired_vel) vf = desired_vel;
 
-  // If the ramp is over, then for the rest of the profile we should
-  // track the desired speed
-  for (std::size_t i = ramp_end_index; i < best_path.x_points.size(); ++i) {
-    geometry_msgs::Pose pose;
-    pose.position.x = best_path.x_points[i];
-    pose.position.y = best_path.y_points[i];
-    planner_utils::convertToQuaternion(best_path.theta_points[i],
-                                       pose.orientation);
-    trajectory_msg.poses.emplace_back(pose);
-    trajectory_msg.velocity.push_back(desired_vel);
+      geometry_msgs::Pose pose;
+      pose.position.x = best_path.poses[i].pose.position.x;
+      pose.position.y = best_path.poses[i].pose.position.y;
+      pose.orientation = best_path.poses[i].pose.orientation;
+      trajectory_msg.poses.emplace_back(pose);
+      trajectory_msg.velocity.push_back(vi);
+      vi = vf;
+    }
+
+    // add constant velocities to the rest of the profile
+    for (std::size_t i = ramp_end_idx + 1; i < path_size; ++i) {
+      geometry_msgs::Pose pose;
+      pose.position.x = best_path.poses[i].pose.position.x;
+      pose.position.y = best_path.poses[i].pose.position.y;
+      pose.orientation = best_path.poses[i].pose.orientation;
+      trajectory_msg.poses.emplace_back(pose);
+      trajectory_msg.velocity.push_back(desired_vel);
+    }
+  }
+  // when current velocity >= desired velocity
+  // trapezoidal profile
+  else {
+    // acceleration/deceleration distance from current velocity to reference
+    // velocity
+    double initial_distance = 0.0;
+    if (curr_vel_x >= ref_vel)
+      initial_distance = calculateDistance(curr_vel_x, ref_vel, -acc_lim_x_);
+    else
+      initial_distance = calculateDistance(curr_vel_x, ref_vel, acc_lim_x_);
+
+    // deceleration distance from reference velocity to desired velocity
+    // TODO(Phone): ref_vel must be always greater than or equal to desired_vel
+    double decel_distance =
+        calculateDistance(ref_vel, desired_vel, -acc_lim_x_);
+
+    // if the summation of these two distances larger than total path length
+    // we just need to build linear ramp-down profile from current velocity to
+    // desired velocity, going backwards
+    if (initial_distance + decel_distance > path_length) {
+      trajectory_msg.poses.resize(path_size);
+      trajectory_msg.velocity.resize(path_size);
+      auto vf = desired_vel;
+      for (std::size_t i = path_size - 2; i >= 0; i--) {
+        double dist = planner_utils::euclidean_distance(
+            best_path.poses[i].pose.position.x,
+            best_path.poses[i].pose.position.y,
+            best_path.poses[i + 1].pose.position.x,
+            best_path.poses[i + 1].pose.position.y);
+        // here we use position acceleration
+        // because we are finding the initial speed instead of final speed
+        double vi = calculateFinalSpeed(vf, acc_lim_x_, dist);
+        // clamp to current speed
+        if (vi > curr_vel_x) vi = curr_vel_x;
+        trajectory_msg.poses[i].position.x = best_path.poses[i].pose.position.x;
+        trajectory_msg.poses[i].position.y = best_path.poses[i].pose.position.y;
+        trajectory_msg.poses[i].orientation =
+            best_path.poses[i].pose.orientation;
+        trajectory_msg.velocity[i] = vi;
+        vf = vi;
+      }
+
+      // add the last pose and velocity
+      trajectory_msg.poses[path_size - 1].position.x =
+          best_path.poses[path_size - 1].pose.position.x;
+      trajectory_msg.poses[path_size - 1].position.y =
+          best_path.poses[path_size - 1].pose.position.y;
+      trajectory_msg.poses[path_size - 1].orientation =
+          best_path.poses[path_size - 1].pose.orientation;
+      trajectory_msg.velocity[path_size - 1] = desired_vel;
+    }
+
+    // otherwise, we build a complete trapezoidal profile with three regions:
+    // accelerating/decelerating to reference velocity, constant reference
+    // velocity and decelerating to final desired velocity
+    else {
+      // compute decel_idx at which we start decelerating to final speed
+      std::size_t decel_idx = path_size - 1;
+      double temp_dist = 0.0;
+      while (decel_idx > 0 && temp_dist < decel_distance) {
+        temp_dist += planner_utils::euclidean_distance(
+            best_path.poses[decel_idx].pose.position.x,
+            best_path.poses[decel_idx].pose.position.y,
+            best_path.poses[decel_idx - 1].pose.position.x,
+            best_path.poses[decel_idx - 1].pose.position.y);
+        decel_idx -= 1;
+      }
+
+      // initial index to stop accelerating/decelerating to reference speed from
+      // current speed
+      std::size_t initial_idx = 0;
+      temp_dist = 0.0;
+      while (initial_idx < decel_idx && temp_dist < initial_distance) {
+        temp_dist += planner_utils::euclidean_distance(
+            best_path.poses[initial_idx].pose.position.x,
+            best_path.poses[initial_idx].pose.position.y,
+            best_path.poses[initial_idx + 1].pose.position.x,
+            best_path.poses[initial_idx + 1].pose.position.y);
+        initial_idx += 1;
+      }
+
+      // The speeds from the start to initial_idx should be a linear ramp from
+      // the current speed up/down to the reference speed,
+      // accelerating/decelerating at acc_lim_x_/-acc_lim_x_.
+      double vi = curr_vel_x;
+      for (std::size_t i = 0; i < initial_idx; ++i) {
+        double dist = planner_utils::euclidean_distance(
+            best_path.poses[i].pose.position.x,
+            best_path.poses[i].pose.position.y,
+            best_path.poses[i + 1].pose.position.x,
+            best_path.poses[i + 1].pose.position.y);
+        double vf = 0.0;
+        if (curr_vel_x >= ref_vel) {
+          vf = calculateFinalSpeed(vi, -acc_lim_x_, dist);
+          if (vf < ref_vel) vf = ref_vel;
+        } else {
+          vf = calculateFinalSpeed(vi, acc_lim_x_, dist);
+          if (vf > ref_vel) vf = ref_vel;
+        }
+        geometry_msgs::Pose pose;
+        pose.position.x = best_path.poses[i].pose.position.x;
+        pose.position.y = best_path.poses[i].pose.position.y;
+        pose.orientation = best_path.poses[i].pose.orientation;
+        trajectory_msg.poses.emplace_back(pose);
+        trajectory_msg.velocity.push_back(vi);
+        vi = vf;
+      }
+
+      // in this portion of the profile, we are maintaining the reference speed
+      for (std::size_t i = initial_idx; i < decel_idx; ++i) {
+        geometry_msgs::Pose pose;
+        pose.position.x = best_path.poses[i].pose.position.x;
+        pose.position.y = best_path.poses[i].pose.position.y;
+        pose.orientation = best_path.poses[i].pose.orientation;
+        trajectory_msg.poses.emplace_back(pose);
+        trajectory_msg.velocity.push_back(ref_vel);
+      }
+
+      // The speeds from the decel_idx to end of the path should be a linear
+      // ramp from the reference speed down to the 0, decelerating at
+      // -acc_lim_x_.
+      vi = ref_vel;
+      for (std::size_t i = decel_idx; i < path_size; ++i) {
+        double dist = planner_utils::euclidean_distance(
+            best_path.poses[i].pose.position.x,
+            best_path.poses[i].pose.position.y,
+            best_path.poses[i + 1].pose.position.x,
+            best_path.poses[i + 1].pose.position.y);
+        double vf = calculateFinalSpeed(vi, -acc_lim_x_, dist);
+        // clamp speed to desired speed
+        if (vf < desired_vel) vf = desired_vel;
+
+        geometry_msgs::Pose pose;
+        pose.position.x = best_path.poses[i].pose.position.x;
+        pose.position.y = best_path.poses[i].pose.position.y;
+        pose.orientation = best_path.poses[i].pose.orientation;
+        trajectory_msg.poses.emplace_back(pose);
+        trajectory_msg.velocity.push_back(vi);
+        vi = vf;
+      }
+    }
   }
 
   // Interpolate between the zeroth state and the first state.
@@ -99,7 +242,7 @@ void VelocityPlanner::computeVelocityProfile(Trajectory2DMsg& trajectory_msg,
         trajectory_msg.velocity[0];
   }
 
-  trajectory_msg.header.frame_id = best_path.frame_id;
+  trajectory_msg.header.frame_id = best_path.header.frame_id;
   trajectory_msg.header.stamp = ros::Time::now();
 }
 
@@ -110,7 +253,9 @@ double VelocityPlanner::calculateDistance(const double& v_i, const double& v_f,
 
 double VelocityPlanner::calculateFinalSpeed(const double& v_i, const double& a,
                                             const double& d) const {
-  return std::sqrt(std::pow(v_i, 2) + 2.0 * a * d);
+  double radical = std::pow(v_i, 2) + 2.0 * a * d;
+  if (radical > 0) return std::sqrt(std::pow(v_i, 2) + 2.0 * a * d);
+  return 0.0;
 }
 
 }  // namespace smooth_local_planner

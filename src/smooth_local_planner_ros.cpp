@@ -89,7 +89,8 @@ void SmoothLocalPlannerROS::initialize(std::string name, tf2_ros::Buffer* tf,
     velocity_planner_ =
         std::make_shared<VelocityPlanner>(name, odom_helper_.get());
 
-    controller_ = std::make_shared<Controller>(name);
+    controller_ =
+        std::make_shared<Controller>(name, tf_, costmap_ros_->getBaseFrameID());
 
     planning_init_time_ = ros::Time::now();
     initialized_ = true;
@@ -130,11 +131,14 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
     // In the future, this can be integrated with dynamic object detections to
     // generate different behaviors. This lookahead goal pose distance should be
     // chosen based on robot current speed.
+    // this goal_pose_with_speed is now in robot base frame
     GoalPoseWithSpeed goal_pose_with_speed;
     setLookAheadGoalPoseAndSpeed(goal_pose_with_speed, transformed_plan);
 
     // conformal lattice planning
-    // resultant lattice paths and lookahead_goal_pose are now in local frame
+    // input lookahead goal pose must be in robot base frame since the optimizer
+    // assumes inital position will always be zero
+    // resultant lattice paths and goal poses are in robot base frame
     std::vector<SpiralPath> lattice_paths;
     std::vector<geometry_msgs::PoseStamped> goal_poses;
     std::vector<double> obj_costs;
@@ -187,23 +191,19 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
         getBestPathIndex(best_path_idx, lattice_paths,
                          goal_pose_with_speed.pose, collision_status);
 
-    // velocity profile generation
-    Trajectory2DMsg trajectory_msg;
-    velocity_planner_->computeVelocityProfile(trajectory_msg,
-                                              lattice_paths[best_path_idx],
-                                              goal_pose_with_speed.velocity);
+    // from now on, we will use the paths which are in global frame id
+    if (local_path_exists) {
+      // velocity profile generation
+      Trajectory2DMsg trajectory_msg;
+      velocity_planner_->computeVelocityProfile(
+          trajectory_msg, paths[best_path_idx], goal_pose_with_speed.velocity,
+          ref_vel_);
 
-    // std::cout << "velocity" << std::endl;
-    // for (std::size_t i = 0; i < trajectory_msg.velocity.size(); ++i) {
-    //   std::cout << trajectory_msg.velocity[i] << std::endl;
-    // }
-    // std::cout << "---" << std::endl;
+      // TODO: linear interpolation between trajectory points to obtain a fine
+      // resolution
 
-    // TODO: linear interpolation between trajectory points to obtain a fine
-    // resolution
-
-    // if local path exists, update the controller
-    if (local_path_exists) controller_->updateTrajectory(trajectory_msg);
+      controller_->updateTrajectory(trajectory_msg);
+    }
 
     // visualize lattice paths
     if (lattice_paths_pub_) {
@@ -213,15 +213,19 @@ bool SmoothLocalPlannerROS::computeVelocityCommands(
     planning_init_time_ = ros::Time::now();
   }
 
-  // controller
+  if (!costmap_ros_->getRobotPose(current_pose_)) {
+    ROS_ERROR("Could not get robot pose");
+    return false;
+  }
   controller_->updateControls(cmd_vel, current_pose_);
 
   // visualize transformed and pruned global plan
   visualizer_->publishGlobalPlan(transformed_plan);
+
   // TODO(Phone): visualize local path that the controller is currently
   // attempting to follow
-  // if (local_path_exists)
-  //   visualizer_->publishLocalPlan(lattice_paths, best_path_idx);
+  Trajectory2DMsg local_traj = controller_->getCurrentTrajectory();
+  visualizer_->publishLocalPlan(local_traj);
 
   return true;
 }
@@ -431,8 +435,9 @@ void SmoothLocalPlannerROS::setLookAheadGoalPoseAndSpeed(
   // find the first pose in the tranformed local plan which is at a distance
   // greater than the lookahead distance
   // calculate lookahead distance based on current robot speed
-  const double lookahead_dist =
-      lookahead_base_dist_ + curr_robot_vel.pose.position.x * lookahead_time_;
+  double vx = curr_robot_vel.pose.position.x;
+  if (vx < 0) vx = 0.0;
+  const double lookahead_dist = lookahead_base_dist_ + vx * lookahead_time_;
 
   goal_pose.velocity = ref_vel_;
   auto goal_pose_it = std::find_if(
